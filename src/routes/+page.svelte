@@ -239,6 +239,10 @@
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
     window.addEventListener('window-close-request', handleCloseRequest);
+    window.addEventListener('menu-new-tab', () => tabsStore.newTab());
+    window.addEventListener('menu-open-file', () => handleOpenFile());
+    window.addEventListener('menu-save', () => handleSave());
+    window.addEventListener('menu-save-as', () => handleSaveAs());
 
     return () => {
       window.removeEventListener('keydown', handleGlobalKeydown);

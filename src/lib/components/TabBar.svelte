@@ -33,15 +33,16 @@
     showContextMenu = false;
   }
 
+  function emit(name: string, detail?: unknown) {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
   function closeOtherTabs() {
-    const tab = tabsStore.tabs.find(t => t.id === contextMenuTabId);
-    if (tab) {
-      tabsStore.tabs.forEach(t => {
-        if (t.id !== contextMenuTabId && t.content === t.savedContent) {
-          tabsStore.forceCloseTab(t.id);
-        }
-      });
-    }
+    tabsStore.tabs.forEach(t => {
+      if (t.id !== contextMenuTabId && t.content === t.savedContent) {
+        tabsStore.forceCloseTab(t.id);
+      }
+    });
     closeContextMenu();
   }
 
@@ -51,6 +52,14 @@
         tabsStore.forceCloseTab(t.id);
       }
     });
+    closeContextMenu();
+  }
+
+  function copyPath() {
+    const tab = tabsStore.tabs.find(t => t.id === contextMenuTabId);
+    if (tab?.path) {
+      navigator.clipboard.writeText(tab.path);
+    }
     closeContextMenu();
   }
 </script>
@@ -68,7 +77,7 @@
       />
     {/each}
   </div>
-  <button class="tabbar-new" onclick={handleNewTab} title="New tab">
+  <button class="tabbar-new" onclick={handleNewTab} title="New tab (Ctrl+N)">
     <svg width="14" height="14" viewBox="0 0 14 14">
       <path fill="currentColor" d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
@@ -91,8 +100,27 @@
       role="menu"
       tabindex="-1"
     >
+      <button class="context-menu-item" onclick={() => { emit('menu-new-tab'); closeContextMenu(); }}>
+        <span>New Tab</span>
+        <span class="shortcut">Ctrl+N</span>
+      </button>
+      <button class="context-menu-item" onclick={() => { emit('menu-open-file'); closeContextMenu(); }}>
+        <span>Open File...</span>
+        <span class="shortcut">Ctrl+O</span>
+      </button>
+      <div class="context-menu-sep"></div>
+      <button class="context-menu-item" onclick={() => { emit('menu-save'); closeContextMenu(); }}>
+        <span>Save</span>
+        <span class="shortcut">Ctrl+S</span>
+      </button>
+      <button class="context-menu-item" onclick={() => { emit('menu-save-as'); closeContextMenu(); }}>
+        <span>Save As...</span>
+        <span class="shortcut">Ctrl+Shift+S</span>
+      </button>
+      <div class="context-menu-sep"></div>
       <button class="context-menu-item" onclick={() => { handleTabClose(contextMenuTabId); closeContextMenu(); }}>
-        Close
+        <span>Close</span>
+        <span class="shortcut">Ctrl+W</span>
       </button>
       <button class="context-menu-item" onclick={closeOtherTabs}>
         Close Others
@@ -100,6 +128,12 @@
       <button class="context-menu-item" onclick={closeAllTabs}>
         Close All
       </button>
+      {#if tabsStore.tabs.find(t => t.id === contextMenuTabId)?.path}
+        <div class="context-menu-sep"></div>
+        <button class="context-menu-item" onclick={copyPath}>
+          Copy Path
+        </button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -154,15 +188,17 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     padding: var(--sp-xxs) 0;
-    min-width: 160px;
+    min-width: 200px;
     box-shadow: 0 4px 16px rgba(20, 20, 19, 0.15);
     z-index: 201;
   }
 
   .context-menu-item {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
-    padding: var(--sp-xs) var(--sp-md);
+    padding: 6px var(--sp-md);
     font-size: 13px;
     color: var(--ink);
     text-align: left;
@@ -171,5 +207,17 @@
 
   .context-menu-item:hover {
     background: var(--surface-soft);
+  }
+
+  .shortcut {
+    font-size: 11px;
+    color: var(--muted-soft);
+    margin-left: var(--sp-lg);
+  }
+
+  .context-menu-sep {
+    height: 1px;
+    background: var(--hairline);
+    margin: var(--sp-xxs) 0;
   }
 </style>
