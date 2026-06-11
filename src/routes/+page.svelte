@@ -307,8 +307,10 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: var(--surface-dark);
+    background: var(--canvas);
     overflow: hidden;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
   }
 
   .editor-area {

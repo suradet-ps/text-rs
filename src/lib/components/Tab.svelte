@@ -16,6 +16,7 @@
   class:active={isActive}
   {onclick}
   oncontextmenu={(e) => { e.preventDefault(); oncontextmenu(e); }}
+  onkeydown={(e) => e.key === 'Enter' && onclick()}
   role="tab"
   tabindex="-1"
 >
@@ -28,23 +29,23 @@
     onclick={(e) => { e.stopPropagation(); onclose(); }}
     title="Close"
   >
-    <svg width="10" height="10" viewBox="0 0 10 10">
-      <path fill="currentColor" d="M2.8 1.8L5 4l2.2-2.2.7.7L5.7 4.7l2.2 2.2-.7.7L5 5.4l-2.2 2.2-.7-.7L4.3 4.7 2.1 2.5z"/>
+    <svg width="8" height="8" viewBox="0 0 8 8">
+      <path fill="currentColor" d="M1.8 0.8L4 3l2.2-2.2.6.6L4.6 3.6l2.2 2.2-.6.6L4 4.2l-2.2 2.2-.6-.6L3.4 3.6 1.2 1.4z"/>
     </svg>
   </button>
 </div>
 
 <style>
   .tab {
-    height: 36px;
+    height: 32px;
     display: inline-flex;
     align-items: center;
-    gap: var(--sp-xxs);
-    padding: 0 var(--sp-sm);
-    background: var(--surface-dark-soft);
-    color: var(--on-dark-soft);
+    gap: 4px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--muted);
     font-size: 12px;
-    border-radius: var(--r-sm) var(--r-sm) 0 0;
+    border-radius: var(--r-sm);
     cursor: pointer;
     white-space: nowrap;
     max-width: 180px;
@@ -52,16 +53,19 @@
     flex-shrink: 0;
     transition: background 0.15s, color 0.15s;
     position: relative;
+    margin: 3px 1px;
   }
 
   .tab:hover {
-    background: var(--surface-dark-elevated);
-    color: var(--on-dark);
+    background: var(--surface-card);
+    color: var(--body);
   }
 
   .tab.active {
     background: var(--canvas);
     color: var(--ink);
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(20, 20, 19, 0.06);
   }
 
   .tab-name {
@@ -75,13 +79,9 @@
     line-height: 1;
   }
 
-  .tab.active .tab-dot {
-    color: var(--primary);
-  }
-
   .tab-close {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -97,11 +97,7 @@
   }
 
   .tab-close:hover {
-    background: var(--surface-card);
+    background: var(--surface-cream-strong);
     color: var(--ink);
-  }
-
-  .tab.active .tab-close:hover {
-    background: var(--hairline);
   }
 </style>

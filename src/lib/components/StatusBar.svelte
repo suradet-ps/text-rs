@@ -29,14 +29,14 @@
   </div>
   <div class="statusbar-center">
     <span class="statusbar-item">UTF-8</span>
-    <span class="statusbar-sep">|</span>
+    <span class="statusbar-sep">·</span>
     <span class="statusbar-item">LF</span>
   </div>
   <div class="statusbar-right">
     <span class="statusbar-item">Ln {line}, Col {col}</span>
-    <span class="statusbar-sep">|</span>
+    <span class="statusbar-sep">·</span>
     <span class="statusbar-item">{wordCount} words</span>
-    <span class="statusbar-sep">|</span>
+    <span class="statusbar-sep">·</span>
     <span class="statusbar-item">{charCount} chars</span>
   </div>
 </div>
@@ -44,15 +44,16 @@
 <style>
   .statusbar {
     height: 24px;
-    background: var(--surface-dark-elevated);
+    background: var(--surface-soft);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 var(--sp-sm);
     font-size: 11px;
-    color: var(--on-dark-soft);
+    color: var(--muted);
     flex-shrink: 0;
     user-select: none;
+    border-top: 1px solid var(--hairline);
   }
 
   .statusbar-left,
@@ -60,24 +61,23 @@
   .statusbar-right {
     display: flex;
     align-items: center;
-    gap: var(--sp-xs);
+    gap: 6px;
   }
 
   .statusbar-badge {
-    background: var(--surface-dark-soft);
-    padding: 1px var(--sp-xs);
+    background: var(--surface-card);
+    padding: 1px 6px;
     border-radius: var(--r-xs);
-    color: var(--accent-teal);
+    color: var(--primary);
     font-size: 11px;
     font-weight: 500;
   }
 
   .statusbar-item {
-    color: var(--on-dark-soft);
+    color: var(--muted);
   }
 
   .statusbar-sep {
-    color: var(--on-dark-soft);
-    opacity: 0.4;
+    color: var(--hairline);
   }
 </style>

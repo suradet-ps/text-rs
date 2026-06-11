@@ -106,12 +106,13 @@
 
 <style>
   .tabbar {
-    height: 36px;
-    background: var(--surface-dark);
+    height: 32px;
+    background: var(--surface-soft);
     display: flex;
     align-items: stretch;
     flex-shrink: 0;
     overflow: hidden;
+    border-bottom: 1px solid var(--hairline);
   }
 
   .tabbar-scroll {
@@ -119,6 +120,7 @@
     overflow-x: auto;
     scrollbar-width: none;
     flex: 1;
+    padding-left: 80px;
   }
 
   .tabbar-scroll::-webkit-scrollbar {
@@ -126,19 +128,19 @@
   }
 
   .tabbar-new {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--on-dark-soft);
+    color: var(--muted);
     flex-shrink: 0;
     transition: color 0.15s, background 0.15s;
   }
 
   .tabbar-new:hover {
-    color: var(--on-dark);
-    background: var(--surface-dark-soft);
+    color: var(--ink);
+    background: var(--surface-card);
   }
 
   .context-menu-overlay {

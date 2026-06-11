@@ -34,77 +34,111 @@
 </script>
 
 <div class="titlebar" data-tauri-drag-region>
+  <div class="titlebar-left">
+    <button class="traffic-light close" onclick={handleClose} title="Close">
+      <svg class="tl-icon" viewBox="0 0 12 12">
+        <path d="M3.5 3.5l5 5M8.5 3.5l-5 5" />
+      </svg>
+    </button>
+    <button class="traffic-light minimize" onclick={handleMinimize} title="Minimize">
+      <svg class="tl-icon" viewBox="0 0 12 12">
+        <path d="M2.5 6h7" />
+      </svg>
+    </button>
+    <button class="traffic-light maximize" onclick={handleMaximize} title="Maximize">
+      <svg class="tl-icon" viewBox="0 0 12 12">
+        <path d="M2.5 6h7M6 2.5v7" />
+      </svg>
+    </button>
+  </div>
   <div class="titlebar-title" data-tauri-drag-region>
     {title}
   </div>
-  <div class="titlebar-controls">
-    <button class="titlebar-btn" onclick={handleMinimize} title="minimize">
-      <svg width="12" height="12" viewBox="0 0 12 12">
-        <path fill="currentColor" d="M2 6h8v1H2z"/>
-      </svg>
-    </button>
-    <button class="titlebar-btn" onclick={handleMaximize} title="maximize">
-      <svg width="12" height="12" viewBox="0 0 12 12">
-        <path fill="none" stroke="currentColor" stroke-width="1.2" d="M2 3.5h7v5.5H2z"/>
-      </svg>
-    </button>
-    <button class="titlebar-btn titlebar-btn-close" onclick={handleClose} title="close">
-      <svg width="12" height="12" viewBox="0 0 12 12">
-        <path fill="currentColor" d="M3.4 2.3L6 4.9l2.6-2.6.9.9L6.9 5.8l2.6 2.6-.9.9L6 6.7l-2.6 2.7-.9-.9L5.1 5.8 2.5 3.2z"/>
-      </svg>
-    </button>
-  </div>
+  <div class="titlebar-right"></div>
 </div>
 
 <style>
   .titlebar {
-    height: 32px;
-    background: var(--surface-dark);
+    height: 38px;
+    background: var(--surface-soft);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 0 var(--sp-xs);
+    padding: 0 12px;
     user-select: none;
     flex-shrink: 0;
     position: relative;
     z-index: 100;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 72px;
+    flex-shrink: 0;
+  }
+
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: filter 0.15s;
+    flex-shrink: 0;
+  }
+
+  .traffic-light.close {
+    background: #ff5f57;
+  }
+
+  .traffic-light.minimize {
+    background: #febc2e;
+  }
+
+  .traffic-light.maximize {
+    background: #28c840;
+  }
+
+  .traffic-light:hover {
+    filter: brightness(0.85);
+  }
+
+  .tl-icon {
+    width: 8px;
+    height: 8px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .tl-icon path {
+    fill: none;
+    stroke: rgba(0, 0, 0, 0.5);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+  }
+
+  .titlebar-left:hover .tl-icon {
+    opacity: 1;
   }
 
   .titlebar-title {
     font-size: 13px;
     font-weight: 500;
-    color: var(--on-dark);
-    padding-left: var(--sp-xs);
+    color: var(--ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+    text-align: center;
+    padding: 0 var(--sp-sm);
   }
 
-  .titlebar-controls {
-    display: flex;
-    gap: 2px;
+  .titlebar-right {
+    width: 72px;
     flex-shrink: 0;
-  }
-
-  .titlebar-btn {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--r-sm);
-    color: var(--on-dark-soft);
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .titlebar-btn:hover {
-    background: var(--surface-dark-soft);
-    color: var(--on-dark);
-  }
-
-  .titlebar-btn-close:hover {
-    background: var(--error);
-    color: var(--on-primary);
   }
 </style>

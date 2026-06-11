@@ -56,10 +56,10 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  background: var(--surface-dark);
+  background: var(--canvas);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
-  color: var(--on-dark);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
