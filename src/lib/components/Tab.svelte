@@ -13,6 +13,7 @@
 
   let editing = $state(false);
   let editValue = $state('');
+  // svelte-ignore non_reactive_update
   let inputEl: HTMLInputElement;
 
   function handleDblClick() {
