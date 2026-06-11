@@ -38,6 +38,39 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png"
+    ],
+    "fileAssociations": [
+      {
+        "name": "Plain Text",
+        "ext": ["txt"],
+        "mimeType": "text/plain",
+        "role": "Editor"
+      },
+      {
+        "name": "Markdown",
+        "ext": ["md", "markdown", "mdown", "mkd"],
+        "mimeType": "text/markdown",
+        "role": "Editor"
+      },
+      {
+        "name": "Source Code",
+        "ext": [
+          "rs", "ts", "tsx", "js", "jsx", "py", "rb", "go", "java",
+          "c", "cpp", "h", "hpp", "cs", "swift", "kt",
+          "html", "css", "scss", "less", "sass",
+          "json", "yaml", "yml", "toml", "xml",
+          "sql", "sh", "bash", "zsh", "fish",
+          "vue", "svelte"
+        ],
+        "mimeType": "text/*",
+        "role": "Editor"
+      },
+      {
+        "name": "Configuration",
+        "ext": ["env", "gitignore", "editorconfig"],
+        "mimeType": "text/plain",
+        "role": "Editor"
+      }
     ]
   }
 }

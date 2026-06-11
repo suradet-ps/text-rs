@@ -3,6 +3,7 @@ mod state;
 
 use state::recent::RecentFilesState;
 use std::sync::Mutex;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +21,20 @@ pub fn run() {
             commands::file::remove_recent_file,
             commands::window::set_window_title,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Opened { urls } = event {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    use tauri::Emitter;
+                    let paths: Vec<String> = urls
+                        .iter()
+                        .filter_map(|u| u.to_file_path().ok().and_then(|p| p.to_str().map(String::from)))
+                        .collect();
+                    if !paths.is_empty() {
+                        window.emit("file-opened", paths).unwrap();
+                    }
+                }
+            }
+        });
 }

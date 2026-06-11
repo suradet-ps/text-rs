@@ -244,10 +244,23 @@
     window.addEventListener('menu-save', () => handleSave());
     window.addEventListener('menu-save-as', () => handleSaveAs());
 
+    const unlisten = getAppWindow().listen<string[]>('file-opened', async (event) => {
+      for (const filePath of event.payload) {
+        try {
+          const payload = await invoke<FilePayload>('read_file', { path: filePath });
+          tabsStore.openTab(payload);
+          invoke('add_recent_file', { path: payload.path }).catch(() => {});
+        } catch (err) {
+          console.error('Failed to open file:', filePath, err);
+        }
+      }
+    });
+
     return () => {
       window.removeEventListener('keydown', handleGlobalKeydown);
       window.removeEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
       window.removeEventListener('window-close-request', handleCloseRequest);
+      unlisten.then(fn => fn());
     };
   });
 </script>
