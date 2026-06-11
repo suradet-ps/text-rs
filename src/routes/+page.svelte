@@ -12,7 +12,11 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import type { FilePayload } from '$lib/stores/tabs.svelte';
 
-  const appWindow = getCurrentWindow();
+  let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
+  function getAppWindow() {
+    if (!appWindow) appWindow = getCurrentWindow();
+    return appWindow;
+  }
 
   let showFindReplace = $state(false);
 
@@ -137,7 +141,7 @@
   async function handleCloseRequest() {
     const dirtyTabs = tabsStore.getDirtyTabs();
     if (dirtyTabs.length === 0) {
-      appWindow.close();
+      getAppWindow().close();
       return;
     }
 
@@ -157,9 +161,9 @@
           }
         }
       }
-      appWindow.close();
+      getAppWindow().close();
     } else if (result === 'discard') {
-      appWindow.close();
+      getAppWindow().close();
     }
   }
 
