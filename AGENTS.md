@@ -677,16 +677,16 @@ Implementation: listen to `tauri://close-requested` event with `event.preventDef
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Dev server (hot reload)
-npm run tauri dev
+bun run tauri dev
 
 # Type check
-npm run check
+bun run check
 
 # Production build
-npm run tauri build
+bun run tauri build
 
 # Rust lint
 cd src-tauri && cargo clippy
