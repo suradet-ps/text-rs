@@ -27,6 +27,7 @@
     "@tauri-apps/plugin-fs": "^2"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@sveltejs/adapter-static": "^3",
     "@sveltejs/kit": "^2",
     "@sveltejs/vite-plugin-svelte": "^5",
