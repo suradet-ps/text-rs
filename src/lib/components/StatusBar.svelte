@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabsStore } from '$lib/stores/tabs';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
 
   let line = $derived(tabsStore.activeTab?.cursorLine ?? 1);
   let col = $derived(tabsStore.activeTab?.cursorCol ?? 1);

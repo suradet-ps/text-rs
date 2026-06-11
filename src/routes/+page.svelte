@@ -6,14 +6,19 @@
   import StatusBar from '$lib/components/StatusBar.svelte';
   import FindReplace from '$lib/components/FindReplace.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-  import { tabsStore } from '$lib/stores/tabs';
-  import { recentStore } from '$lib/stores/recent';
-  import { settingsStore } from '$lib/stores/settings';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
+  import { recentStore } from '$lib/stores/recent.svelte';
+  import { settingsStore } from '$lib/stores/settings.svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import type { FilePayload } from '$lib/stores/tabs';
+  import type { FilePayload } from '$lib/stores/tabs.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
-  const appWindow = getCurrentWindow();
+  let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
+
+  function getAppWindow() {
+    if (!appWindow) appWindow = getCurrentWindow();
+    return appWindow;
+  }
 
   let showFindReplace = $state(false);
   let findReplaceMode = $state<'find' | 'replace'>('find');
@@ -140,7 +145,7 @@
   async function handleWindowCloseRequest() {
     const dirtyTabs = tabsStore.getDirtyTabs();
     if (dirtyTabs.length === 0) {
-      appWindow.close();
+      getAppWindow().close();
       return;
     }
 
@@ -160,9 +165,9 @@
           }
         }
       }
-      appWindow.close();
+      getAppWindow().close();
     } else if (result === 'discard') {
-      appWindow.close();
+      getAppWindow().close();
     }
   }
 
@@ -247,7 +252,7 @@
     window.addEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
     window.addEventListener('window-close-request', handleWindowCloseRequest);
 
-    const unlisten = appWindow.onCloseRequested(async (event) => {
+    const unlisten = getAppWindow().onCloseRequested(async (event) => {
       event.preventDefault();
       await handleWindowCloseRequest();
     });

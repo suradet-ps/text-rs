@@ -9,7 +9,7 @@ import { lintKeymap } from '@codemirror/lint';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { textRsLightTheme } from './theme';
 import { getLanguage } from './extensions';
-import type { Settings } from '$lib/stores/settings';
+import type { Settings } from '$lib/stores/settings.svelte';
 
 export function createEditorState(
   content: string,

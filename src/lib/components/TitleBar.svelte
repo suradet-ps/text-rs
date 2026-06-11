@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { tabsStore } from '$lib/stores/tabs';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
-  const appWindow = getCurrentWindow();
+  let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
+
+  function getAppWindow() {
+    if (!appWindow) appWindow = getCurrentWindow();
+    return appWindow;
+  }
 
   let title = $derived.by(() => {
     const tab = tabsStore.activeTab;
@@ -12,18 +17,18 @@
   });
 
   function handleMinimize() {
-    appWindow.minimize();
+    getAppWindow().minimize();
   }
 
   function handleMaximize() {
-    appWindow.toggleMaximize();
+    getAppWindow().toggleMaximize();
   }
 
   async function handleClose() {
     if (tabsStore.hasDirtyTabs()) {
       window.dispatchEvent(new CustomEvent('window-close-request'));
     } else {
-      appWindow.close();
+      getAppWindow().close();
     }
   }
 </script>

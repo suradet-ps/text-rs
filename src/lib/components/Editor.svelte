@@ -2,8 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { EditorView } from '@codemirror/view';
   import { createEditorState } from '$lib/codemirror/setup';
-  import { tabsStore } from '$lib/stores/tabs';
-  import { settingsStore } from '$lib/stores/settings';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
+  import { settingsStore } from '$lib/stores/settings.svelte';
 
   interface Props {
     tabId: string;

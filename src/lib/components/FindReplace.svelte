@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tabsStore } from '$lib/stores/tabs';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
 
   let { show = false, onClose, onFind, onReplace }: {
     show: boolean;

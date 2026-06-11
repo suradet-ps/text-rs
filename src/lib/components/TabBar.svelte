@@ -1,6 +1,6 @@
 <script lang="ts">
   import Tab from './Tab.svelte';
-  import { tabsStore } from '$lib/stores/tabs';
+  import { tabsStore } from '$lib/stores/tabs.svelte';
 
   let showContextMenu = $state(false);
   let contextMenuPos = $state({ x: 0, y: 0 });
