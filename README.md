@@ -59,7 +59,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/text-rs.git
+git clone https://github.com/suradet-ps/text-rs.git
 cd text-rs
 
 # Install dependencies
