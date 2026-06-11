@@ -17,7 +17,8 @@
 
   let editorEl: HTMLDivElement;
   let view: EditorView | null = null;
-  let isUpdatingFromOutside = false;
+  let lastTabId = '';
+  let suppressNextUpdate = false;
 
   function getTheme(): 'light' | 'dark' {
     return settingsStore.theme === 'dark' ? 'dark' : 'light';
@@ -30,23 +31,23 @@
     }
   }
 
-  function createEditor() {
+  function createEditor(doc: string, lang: string) {
     destroyEditor();
     if (!editorEl) return;
 
     const state = createEditorState(
-      content,
+      doc,
       settingsStore.settings,
       getTheme(),
-      language,
+      lang,
       (value) => {
-        if (!isUpdatingFromOutside) {
+        if (!suppressNextUpdate) {
           onContentChange(value);
         }
       },
-      (view) => {
-        const pos = view.state.selection.main.head;
-        const line = view.state.doc.lineAt(pos);
+      (update) => {
+        const pos = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(pos);
         onCursorUpdate(line.number, pos - line.from + 1);
       },
     );
@@ -55,7 +56,8 @@
   }
 
   onMount(() => {
-    createEditor();
+    createEditor(content, language);
+    lastTabId = tabId;
   });
 
   onDestroy(() => {
@@ -63,21 +65,9 @@
   });
 
   $effect(() => {
-    if (view && content !== undefined) {
-      const currentContent = view.state.doc.toString();
-      if (currentContent !== content) {
-        isUpdatingFromOutside = true;
-        view.dispatch({
-          changes: { from: 0, to: currentContent.length, insert: content }
-        });
-        isUpdatingFromOutside = false;
-      }
-    }
-  });
-
-  $effect(() => {
-    if (view && language) {
-      createEditor();
+    if (tabId !== lastTabId && view) {
+      lastTabId = tabId;
+      createEditor(content, language);
     }
   });
 </script>
