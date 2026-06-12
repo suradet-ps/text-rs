@@ -59,11 +59,14 @@ fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
 
 #[tauri::command]
 pub async fn open_file(app: tauri::AppHandle) -> Result<Option<FilePayload>, String> {
-    let file_path = app
-        .dialog()
-        .file()
-        .add_filter("All Files", &["*"])
-        .blocking_pick_file();
+    let file_path = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("All Files", &["*"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|e| format!("Dialog task failed: {}", e))?;
 
     match file_path {
         Some(path) => {
@@ -159,11 +162,15 @@ pub async fn save_file_as(
     line_ending: Option<String>,
     encoding: Option<String>,
 ) -> Result<Option<String>, String> {
-    let mut dialog = app.dialog().file();
-    if let Some(name) = suggested_name {
-        dialog = dialog.set_file_name(&name);
-    }
-    let file_path = dialog.blocking_save_file();
+    let file_path = tokio::task::spawn_blocking(move || {
+        let mut dialog = app.dialog().file();
+        if let Some(name) = suggested_name {
+            dialog = dialog.set_file_name(&name);
+        }
+        dialog.blocking_save_file()
+    })
+    .await
+    .map_err(|e| format!("Dialog task failed: {}", e))?;
 
     match file_path {
         Some(path) => {

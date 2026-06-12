@@ -447,11 +447,11 @@
     recoveryInterval = setInterval(() => saveRecovery(), 15000);
 
     // Window close interception (Cmd+Q, Alt+F4, close button)
-    const closeUnlistenPromise = getAppWindow().onCloseRequested(async (event) => {
+    const closeUnlistenPromise = getAppWindow().onCloseRequested((event) => {
       const dirtyTabs = tabsStore.getDirtyTabs();
       if (dirtyTabs.length > 0) {
         event.preventDefault();
-        await handleCloseRequest();
+        handleCloseRequest();
       }
     });
 
