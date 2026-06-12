@@ -12,22 +12,22 @@ pub struct FilePayload {
     pub line_ending: String,
 }
 
-/// Detect encoding from raw bytes
 fn detect_encoding(bytes: &[u8]) -> &'static Encoding {
     if bytes.is_empty() {
         return encoding_rs::UTF_8;
     }
     let (enc, _confidence, _has_bom) = chardet::detect(bytes);
     match enc.as_str() {
-        "UTF-8" => encoding_rs::UTF_8,
+        "UTF-8" | "ascii" | "ASCII" => encoding_rs::UTF_8,
         "UTF-16LE" => encoding_rs::UTF_16LE,
         "UTF-16BE" => encoding_rs::UTF_16BE,
-        "windows-1252" | "ISO-8859-1" => encoding_rs::WINDOWS_1252,
-        _ => encoding_rs::WINDOWS_1252,
+        "windows-1252" | "ISO-8859-1" | "iso-8859-1" | "ISO-8859-15" => {
+            encoding_rs::WINDOWS_1252
+        }
+        _ => encoding_rs::UTF_8,
     }
 }
 
-/// Detect line endings from content string
 fn detect_line_ending(content: &str) -> &'static str {
     let crlf_count = content.matches("\r\n").count();
     let lf_count = content.matches('\n').count() - crlf_count;
@@ -41,27 +41,29 @@ fn detect_line_ending(content: &str) -> &'static str {
     }
 }
 
-/// Encode content into bytes using the specified encoding
-fn encode_content(content: &str, line_ending: &str) -> Vec<u8> {
+fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
     let normalized = match line_ending {
         "CRLF" => content.replace('\n', "\r\n").replace("\r\r\n", "\r\n"),
         "CR" => content.replace('\n', "\r"),
         _ => content.to_string(),
     };
-    let (encoded, _enc, _had_error) = encoding_rs::UTF_8.encode(&normalized);
+    let enc: &'static Encoding = match encoding {
+        "windows-1252" | "Windows-1252" => encoding_rs::WINDOWS_1252,
+        "UTF-16LE" => encoding_rs::UTF_16LE,
+        "UTF-16BE" => encoding_rs::UTF_16BE,
+        _ => encoding_rs::UTF_8,
+    };
+    let (encoded, _enc, _had_error) = enc.encode(&normalized);
     encoded.to_vec()
 }
 
 #[tauri::command]
 pub async fn open_file(app: tauri::AppHandle) -> Result<Option<FilePayload>, String> {
-    let file_path = tokio::task::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .add_filter("All Files", &["*"])
-            .blocking_pick_file()
-    })
-    .await
-    .map_err(|e| format!("Dialog task failed: {}", e))?;
+    let file_path = app
+        .dialog()
+        .file()
+        .add_filter("All Files", &["*"])
+        .blocking_pick_file();
 
     match file_path {
         Some(path) => {
@@ -86,6 +88,7 @@ async fn read_file_internal(path: &str) -> Result<FilePayload, String> {
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     let encoding = detect_encoding(&bytes);
+    let encoding_name = encoding.name().to_string();
     let (content, _enc, _had_error) = encoding.decode(&bytes);
     let line_ending = detect_line_ending(&content);
     let file_name = PathBuf::from(path)
@@ -97,7 +100,7 @@ async fn read_file_internal(path: &str) -> Result<FilePayload, String> {
         path: path.to_string(),
         content: content.to_string(),
         file_name,
-        encoding: "UTF-8".to_string(),
+        encoding: encoding_name,
         line_ending: line_ending.to_string(),
     })
 }
@@ -108,8 +111,15 @@ pub async fn read_file_with_encoding(path: String) -> Result<FilePayload, String
 }
 
 #[tauri::command]
-pub async fn save_file(path: String, content: String) -> Result<(), String> {
-    // Atomic save: write to temp file, then rename
+pub async fn save_file(
+    path: String,
+    content: String,
+    line_ending: Option<String>,
+    encoding: Option<String>,
+) -> Result<(), String> {
+    let le = line_ending.unwrap_or_else(|| "LF".to_string());
+    let enc = encoding.unwrap_or_else(|| "UTF-8".to_string());
+
     let p = PathBuf::from(&path);
     let parent = p.parent().ok_or("Invalid file path")?;
     let stem = p.file_stem().ok_or("Invalid file path")?;
@@ -125,7 +135,7 @@ pub async fn save_file(path: String, content: String) -> Result<(), String> {
     );
     let temp_path = parent.join(&temp_name);
 
-    let data = encode_content(&content, "LF");
+    let data = encode_content(&content, &le, &enc);
     tokio::fs::write(&temp_path, &data).await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
             "Permission denied: the file is read-only. Save a copy instead?".to_string()
@@ -146,16 +156,14 @@ pub async fn save_file_as(
     app: tauri::AppHandle,
     content: String,
     suggested_name: Option<String>,
+    line_ending: Option<String>,
+    encoding: Option<String>,
 ) -> Result<Option<String>, String> {
-    let file_path = tokio::task::spawn_blocking(move || {
-        let mut dialog = app.dialog().file();
-        if let Some(name) = suggested_name {
-            dialog = dialog.set_file_name(&name);
-        }
-        dialog.blocking_save_file()
-    })
-    .await
-    .map_err(|e| format!("Dialog task failed: {}", e))?;
+    let mut dialog = app.dialog().file();
+    if let Some(name) = suggested_name {
+        dialog = dialog.set_file_name(&name);
+    }
+    let file_path = dialog.blocking_save_file();
 
     match file_path {
         Some(path) => {
@@ -164,7 +172,9 @@ pub async fn save_file_as(
                 .map_err(|e| format!("Invalid file path: {:?}", e))?;
             let path_str = path_buf.to_string_lossy().to_string();
 
-            let data = encode_content(&content, "LF");
+            let le = line_ending.unwrap_or_else(|| "LF".to_string());
+            let enc = encoding.unwrap_or_else(|| "UTF-8".to_string());
+            let data = encode_content(&content, &le, &enc);
             tokio::fs::write(&path_str, &data).await.map_err(|e| {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
                     "Permission denied: the file is read-only. Save a copy instead?".to_string()
@@ -191,14 +201,18 @@ pub async fn add_recent_file(
     state: tauri::State<'_, crate::state::recent::RecentFilesState>,
     path: String,
 ) -> Result<(), String> {
-    let mut files = state.0.lock().map_err(|e| e.to_string())?;
+    {
+        let mut files = state.files.lock().map_err(|e| e.to_string())?;
 
-    files.retain(|p| p != &path);
-    files.insert(0, path);
+        files.retain(|p| p != &path);
+        files.insert(0, path);
 
-    if files.len() > 10 {
-        files.truncate(10);
+        if files.len() > crate::state::recent::RecentFilesState::MAX_ENTRIES {
+            files.truncate(crate::state::recent::RecentFilesState::MAX_ENTRIES);
+        }
     }
+
+    state.persist()?;
 
     Ok(())
 }
@@ -207,7 +221,7 @@ pub async fn add_recent_file(
 pub async fn get_recent_files(
     state: tauri::State<'_, crate::state::recent::RecentFilesState>,
 ) -> Result<Vec<String>, String> {
-    let files = state.0.lock().map_err(|e| e.to_string())?;
+    let files = state.files.lock().map_err(|e| e.to_string())?;
     Ok(files.clone())
 }
 
@@ -216,7 +230,12 @@ pub async fn remove_recent_file(
     state: tauri::State<'_, crate::state::recent::RecentFilesState>,
     path: String,
 ) -> Result<(), String> {
-    let mut files = state.0.lock().map_err(|e| e.to_string())?;
-    files.retain(|p| p != &path);
+    {
+        let mut files = state.files.lock().map_err(|e| e.to_string())?;
+        files.retain(|p| p != &path);
+    }
+
+    state.persist()?;
+
     Ok(())
 }

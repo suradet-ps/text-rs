@@ -3,9 +3,8 @@ mod state;
 
 use state::recent::RecentFilesState;
 use state::recovery::RecoveryState;
-use std::sync::Mutex;
-use tauri::Manager;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::Manager;
 
 fn init_logging(app_data_dir: &std::path::Path) {
     let log_dir = app_data_dir.join("logs");
@@ -15,12 +14,21 @@ fn init_logging(app_data_dir: &std::path::Path) {
     let _ = simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         simplelog::LevelFilter::Info,
         simplelog::Config::default(),
-        std::fs::File::create(&log_file).unwrap_or(std::fs::File::create("/dev/null").unwrap()),
+        std::fs::File::create(&log_file)
+            .unwrap_or(std::fs::File::create("/dev/null").unwrap()),
     )]);
 }
 
 fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
-    let open_recent = SubmenuBuilder::new(app, "Open Recent").build().unwrap();
+    let open_recent = SubmenuBuilder::new(app, "Open Recent")
+        .item(
+            &MenuItemBuilder::new("(No Recent Files)")
+                .enabled(false)
+                .build(app)
+                .unwrap(),
+        )
+        .build()
+        .unwrap();
 
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(
@@ -280,7 +288,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .manage(RecentFilesState(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             commands::file::open_file,
             commands::file::read_file,
@@ -298,13 +305,13 @@ pub fn run() {
             commands::recovery::get_app_data_dir,
         ])
         .setup(|app| {
-            // Initialize logging
             if let Ok(dir) = app.path().app_data_dir() {
                 init_logging(&dir);
 
-                // Initialize recovery state
                 let recovery_dir = dir.join("recovery");
                 app.manage(RecoveryState::new(recovery_dir));
+
+                app.manage(RecentFilesState::new(dir));
             }
 
             let menu = build_menu(app.handle());
