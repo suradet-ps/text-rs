@@ -21,7 +21,7 @@
     { "identifier": "fs:allow-write-text-file", "allow": [{ "path": "**" }] },
     { "identifier": "fs:scope", "allow": [{ "path": "**" }] },
     "shell:default",
-    { "identifier": "shell:allow-open", "allow": [{ "path": "**" }] },
+    "shell:allow-open",
     "store:default"
   ]
 }
