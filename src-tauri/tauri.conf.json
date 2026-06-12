@@ -51,115 +51,204 @@
         "name": "Plain Text",
         "ext": ["txt", "log", "csv", "tsv", "ini", "cfg", "conf", "env", "rst"],
         "mimeType": "text/plain",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Markdown",
         "ext": ["md", "markdown", "mdown", "mkd"],
         "mimeType": "text/markdown",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Rust Source",
-        "ext": ["rs", "toml"],
-        "mimeType": "text/x-rust",
-        "role": "Editor"
+        "ext": ["rs"],
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "TOML",
+        "ext": ["toml"],
+        "mimeType": "application/toml",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "TypeScript Source",
-        "ext": ["ts", "tsx"],
-        "mimeType": "text/typescript",
-        "role": "Editor"
+        "ext": ["ts"],
+        "mimeType": "application/typescript",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "TypeScript JSX",
+        "ext": ["tsx"],
+        "mimeType": "application/typescript",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "JavaScript Source",
         "ext": ["js", "jsx", "mjs", "cjs"],
-        "mimeType": "text/javascript",
-        "role": "Editor"
+        "mimeType": "application/javascript",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Python Source",
         "ext": ["py", "pyw"],
         "mimeType": "text/x-python",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "HTML",
-        "ext": ["html", "htm", "svelte", "vue"],
+        "ext": ["html", "htm"],
         "mimeType": "text/html",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "Svelte",
+        "ext": ["svelte"],
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "Vue",
+        "ext": ["vue"],
+        "mimeType": "text/plain",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "CSS",
-        "ext": ["css", "scss", "less"],
+        "ext": ["css"],
         "mimeType": "text/css",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "SCSS",
+        "ext": ["scss"],
+        "mimeType": "text/x-scss",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "LESS",
+        "ext": ["less"],
+        "mimeType": "text/x-less",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "JSON",
         "ext": ["json", "jsonc"],
         "mimeType": "application/json",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "YAML",
         "ext": ["yaml", "yml"],
-        "mimeType": "text/yaml",
-        "role": "Editor"
+        "mimeType": "application/x-yaml",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "XML",
-        "ext": ["xml", "svg"],
-        "mimeType": "text/xml",
-        "role": "Editor"
+        "ext": ["xml"],
+        "mimeType": "application/xml",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "SVG",
+        "ext": ["svg"],
+        "mimeType": "image/svg+xml",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "SQL",
-        "ext": ["sql", "graphql"],
-        "mimeType": "text/x-sql",
-        "role": "Editor"
+        "ext": ["sql"],
+        "mimeType": "application/sql",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "GraphQL",
+        "ext": ["graphql", "gql"],
+        "mimeType": "application/graphql",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Shell Script",
         "ext": ["sh", "bash", "zsh", "fish"],
         "mimeType": "text/x-shellscript",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Go Source",
         "ext": ["go"],
         "mimeType": "text/x-go",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Ruby Source",
         "ext": ["rb"],
-        "mimeType": "text/x-ruby",
-        "role": "Editor"
+        "mimeType": "application/x-ruby",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
-        "name": "C/C++ Source",
-        "ext": ["c", "cpp", "cc", "h", "hpp"],
-        "mimeType": "text/x-c++src",
-        "role": "Editor"
+        "name": "C Source",
+        "ext": ["c"],
+        "mimeType": "text/x-c",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "C++ Source",
+        "ext": ["cpp", "cc", "cxx"],
+        "mimeType": "text/x-c++",
+        "role": "Editor",
+        "rank": "Default"
+      },
+      {
+        "name": "C Header",
+        "ext": ["h", "hpp"],
+        "mimeType": "text/x-c-header",
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "Java Source",
         "ext": ["java"],
         "mimeType": "text/x-java-source",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
         "name": "PHP Source",
         "ext": ["php"],
         "mimeType": "text/x-php",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       },
       {
-        "name": "Configuration",
-        "ext": ["dockerfile", "gitignore", "editorconfig"],
+        "name": "Dockerfile",
+        "ext": ["dockerfile"],
         "mimeType": "text/plain",
-        "role": "Editor"
+        "role": "Editor",
+        "rank": "Default"
       }
     ],
     "macOS": {

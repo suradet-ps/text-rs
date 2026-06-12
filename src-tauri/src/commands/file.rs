@@ -21,9 +21,7 @@ fn detect_encoding(bytes: &[u8]) -> &'static Encoding {
         "UTF-8" | "ascii" | "ASCII" => encoding_rs::UTF_8,
         "UTF-16LE" => encoding_rs::UTF_16LE,
         "UTF-16BE" => encoding_rs::UTF_16BE,
-        "windows-1252" | "ISO-8859-1" | "iso-8859-1" | "ISO-8859-15" => {
-            encoding_rs::WINDOWS_1252
-        }
+        "windows-1252" | "ISO-8859-1" | "iso-8859-1" | "ISO-8859-15" => encoding_rs::WINDOWS_1252,
         _ => encoding_rs::UTF_8,
     }
 }

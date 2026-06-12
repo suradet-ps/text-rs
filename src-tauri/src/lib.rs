@@ -3,8 +3,8 @@ mod state;
 
 use state::recent::RecentFilesState;
 use state::recovery::RecoveryState;
-use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::Manager;
+use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
 fn init_logging(app_data_dir: &std::path::Path) {
     let log_dir = app_data_dir.join("logs");
@@ -14,8 +14,7 @@ fn init_logging(app_data_dir: &std::path::Path) {
     let _ = simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
         simplelog::LevelFilter::Info,
         simplelog::Config::default(),
-        std::fs::File::create(&log_file)
-            .unwrap_or(std::fs::File::create("/dev/null").unwrap()),
+        std::fs::File::create(&log_file).unwrap_or(std::fs::File::create("/dev/null").unwrap()),
     )]);
 }
 
@@ -330,8 +329,9 @@ pub fn run() {
         tauri::RunEvent::MenuEvent(ref menu_event) => {
             handle_menu_event(app_handle, menu_event.id().as_ref());
         }
-        tauri::RunEvent::ExitRequested { .. } => {
-            log::info!("text-rs exiting");
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            log::info!("text-rs exit requested — deferring to frontend");
+            api.prevent_exit();
         }
         _ => {}
     });

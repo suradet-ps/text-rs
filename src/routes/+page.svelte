@@ -428,6 +428,16 @@
   }
 
   onMount(() => {
+    // Window close interception MUST be registered first, before any async work.
+    // In production builds, the close event can fire before init() completes.
+    const closeUnlistenPromise = getAppWindow().onCloseRequested((event) => {
+      const dirtyTabs = tabsStore.getDirtyTabs();
+      if (dirtyTabs.length > 0) {
+        event.preventDefault();
+        handleCloseRequest();
+      }
+    });
+
     const init = async () => {
       await settingsStore.init();
       await recentStore.refresh();
@@ -445,15 +455,6 @@
     // Start recovery auto-save interval with immediate first save
     saveRecovery();
     recoveryInterval = setInterval(() => saveRecovery(), 15000);
-
-    // Window close interception (Cmd+Q, Alt+F4, close button)
-    const closeUnlistenPromise = getAppWindow().onCloseRequested((event) => {
-      const dirtyTabs = tabsStore.getDirtyTabs();
-      if (dirtyTabs.length > 0) {
-        event.preventDefault();
-        handleCloseRequest();
-      }
-    });
 
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
