@@ -165,7 +165,7 @@ pub fn run() {
                 app.manage(RecoveryState::new(recovery_dir));
             }
 
-            let menu = build_menu(&app.handle());
+            let menu = build_menu(app.handle());
             if let Some(window) = app.get_webview_window("main") {
                 window.set_menu(menu).ok();
             }
@@ -181,19 +181,6 @@ pub fn run() {
         match event {
             tauri::RunEvent::MenuEvent(ref menu_event) => {
                 handle_menu_event(app_handle, menu_event.id().as_ref());
-            }
-            tauri::RunEvent::Opened { urls } => {
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    use tauri::Emitter;
-                    let paths: Vec<String> = urls
-                        .iter()
-                        .filter_map(|u| u.to_file_path().ok())
-                        .filter_map(|p| p.to_str().map(String::from))
-                        .collect();
-                    if !paths.is_empty() {
-                        window.emit("file-opened", paths).ok();
-                    }
-                }
             }
             tauri::RunEvent::ExitRequested { .. } => {
                 log::info!("text-rs exiting");

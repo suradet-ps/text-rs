@@ -116,7 +116,7 @@ pub async fn save_file(path: String, content: String) -> Result<(), String> {
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
-                format!("Permission denied: the file is read-only. Save a copy instead?")
+                "Permission denied: the file is read-only. Save a copy instead?".to_string()
             } else {
                 format!("Failed to save file: {}", e)
             }
@@ -152,7 +152,7 @@ pub async fn save_file_as(
                 .await
                 .map_err(|e| {
                     if e.kind() == std::io::ErrorKind::PermissionDenied {
-                        format!("Permission denied: the file is read-only. Save a copy instead?")
+                        "Permission denied: the file is read-only. Save a copy instead?".to_string()
                     } else {
                         format!("Failed to save file: {}", e)
                     }
