@@ -14,6 +14,15 @@
     tabsStore.setActive(id);
   }
 
+  function handleTabMiddleClick(id: string) {
+    const tab = tabsStore.tabs.find(t => t.id === id);
+    if (tab && tab.content !== tab.savedContent) {
+      window.dispatchEvent(new CustomEvent('tab-close-request', { detail: { tabId: id } }));
+    } else {
+      tabsStore.forceCloseTab(id);
+    }
+  }
+
   function handleTabClose(id: string) {
     const tab = tabsStore.tabs.find(t => t.id === id);
     if (tab && tab.content !== tab.savedContent) {
@@ -63,33 +72,63 @@
     closeContextMenu();
   }
 
-  function renameTab() {
+  function revealInExplorer() {
     const tab = tabsStore.tabs.find(t => t.id === contextMenuTabId);
-    if (tab) {
-      const name = prompt('Rename tab:', tab.fileName);
-      if (name && name.trim() && name.trim() !== tab.fileName) {
-        tabsStore.renameTab(tab.id, name.trim());
-      }
+    if (tab?.path) {
+      import('@tauri-apps/plugin-shell').then(({ open }) => {
+        const dir = tab.path!.replace(/[/\\][^/\\]+$/, '');
+        open(dir);
+      });
     }
     closeContextMenu();
   }
+
+  // Drag and drop reorder
+  let dragIdx: number | null = null;
+
+  function handleDragStart(idx: number) {
+    dragIdx = idx;
+  }
+
+  function handleDragOver(e: DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    e.dataTransfer!.dropEffect = 'move';
+  }
+
+  function handleDrop(e: DragEvent, idx: number) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    tabsStore.reorder(dragIdx, idx);
+    dragIdx = null;
+  }
+
+  function handleDragEnd() {
+    dragIdx = null;
+  }
 </script>
 
-<div class="tabbar">
+<div class="tabbar" role="tablist" aria-label="Open files">
   <div class="tabbar-scroll">
-    {#each tabsStore.tabs as tab (tab.id)}
+    {#each tabsStore.tabs as tab, idx (tab.id)}
       <Tab
         fileName={tab.fileName}
         isDirty={tab.content !== tab.savedContent}
         isActive={tab.id === tabsStore.activeTabId}
+        tabIndex={idx}
         onclick={() => handleTabClick(tab.id)}
+        onmiddleclick={() => handleTabMiddleClick(tab.id)}
         onclose={() => handleTabClose(tab.id)}
         oncontextmenu={(e) => handleContextMenu(e, tab.id)}
         onrename={(name) => tabsStore.renameTab(tab.id, name)}
+        ondragstart={() => handleDragStart(idx)}
+        ondragover={(e) => handleDragOver(e, idx)}
+        ondrop={(e) => handleDrop(e, idx)}
+        ondragend={handleDragEnd}
       />
     {/each}
   </div>
-  <button class="tabbar-new" onclick={handleNewTab} title="New tab (Ctrl+N)">
+  <button class="tabbar-new" onclick={handleNewTab} title="New tab (CmdOrCtrl+N)" aria-label="New tab">
     <svg width="14" height="14" viewBox="0 0 14 14">
       <path fill="currentColor" d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
     </svg>
@@ -97,56 +136,45 @@
 </div>
 
 {#if showContextMenu}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="context-menu-overlay"
     onclick={closeContextMenu}
     onkeydown={(e) => e.key === 'Escape' && closeContextMenu()}
-    role="button"
-    tabindex="-1"
+    role="presentation"
   >
     <div
       class="context-menu"
       style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px;"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={() => {}}
       role="menu"
-      tabindex="-1"
+      aria-label="Tab actions"
     >
-      <button class="context-menu-item" onclick={() => { emit('menu-new-tab'); closeContextMenu(); }}>
+      <button class="context-menu-item" role="menuitem" onclick={() => { emit('menu-new-tab'); closeContextMenu(); }}>
         <span>New Tab</span>
         <span class="shortcut">Ctrl+N</span>
       </button>
-      <button class="context-menu-item" onclick={() => { emit('menu-open-file'); closeContextMenu(); }}>
+      <button class="context-menu-item" role="menuitem" onclick={() => { emit('menu-open-file'); closeContextMenu(); }}>
         <span>Open File...</span>
         <span class="shortcut">Ctrl+O</span>
       </button>
       <div class="context-menu-sep"></div>
-      <button class="context-menu-item" onclick={() => { emit('menu-save'); closeContextMenu(); }}>
-        <span>Save</span>
-        <span class="shortcut">Ctrl+S</span>
-      </button>
-      <button class="context-menu-item" onclick={() => { emit('menu-save-as'); closeContextMenu(); }}>
-        <span>Save As...</span>
-        <span class="shortcut">Ctrl+Shift+S</span>
-      </button>
-      <div class="context-menu-sep"></div>
-      <button class="context-menu-item" onclick={() => { handleTabClose(contextMenuTabId); closeContextMenu(); }}>
+      <button class="context-menu-item" role="menuitem" onclick={() => { handleTabClose(contextMenuTabId); closeContextMenu(); }}>
         <span>Close</span>
         <span class="shortcut">Ctrl+W</span>
       </button>
-      <button class="context-menu-item" onclick={closeOtherTabs}>
+      <button class="context-menu-item" role="menuitem" onclick={closeOtherTabs}>
         Close Others
       </button>
-      <button class="context-menu-item" onclick={closeAllTabs}>
+      <button class="context-menu-item" role="menuitem" onclick={closeAllTabs}>
         Close All
-      </button>
-      <button class="context-menu-item" onclick={renameTab}>
-        Rename
       </button>
       {#if tabsStore.tabs.find(t => t.id === contextMenuTabId)?.path}
         <div class="context-menu-sep"></div>
-        <button class="context-menu-item" onclick={copyPath}>
+        <button class="context-menu-item" role="menuitem" onclick={copyPath}>
           Copy Path
+        </button>
+        <button class="context-menu-item" role="menuitem" onclick={revealInExplorer}>
+          Reveal in File Explorer
         </button>
       {/if}
     </div>

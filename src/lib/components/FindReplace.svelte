@@ -1,70 +1,151 @@
 <script lang="ts">
-  import { tabsStore } from '$lib/stores/tabs.svelte';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
 
-  let { show = false, onClose, onFind, onReplace }: {
+  let { show = false, onClose }: {
     show: boolean;
     onClose: () => void;
-    onFind: (query: string) => void;
-    onReplace: (query: string, replacement: string) => void;
   } = $props();
 
   let query = $state('');
   let replacement = $state('');
-  let isReplaceMode = $state(false);
+  let replaceMode = $state(false);
   let caseSensitive = $state(false);
   let useRegex = $state(false);
+
+  function emitEditorAction(action: string, detail?: Record<string, unknown>) {
+    if (action === 'find' || action === 'find-replace') {
+      // Use CodeMirror's openSearchPanel
+      window.dispatchEvent(new CustomEvent('editor-action', {
+        detail: { action, ...detail },
+      }));
+    }
+  }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       onClose();
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('editor-action', {
+        detail: {
+          action: 'search-next',
+          query,
+          caseSensitive,
+          useRegex,
+        },
+      }));
+    } else if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('editor-action', {
+        detail: {
+          action: 'search-prev',
+          query,
+          caseSensitive,
+          useRegex,
+        },
+      }));
     }
   }
 
-  function handleFind() {
-    if (query) onFind(query);
-  }
-
-  function handleReplace() {
-    if (query) onReplace(query, replacement);
-  }
+  $effect(() => {
+    if (show) {
+      setTimeout(() => {
+        const input = document.querySelector('.find-input') as HTMLInputElement;
+        input?.focus();
+        input?.select();
+      }, 50);
+    }
+  });
 </script>
 
 {#if show}
-  <div class="find-panel" onkeydown={handleKeydown} role="search">
+  <div class="find-panel" onkeydown={handleKeydown} role="search" aria-label="Find and Replace">
     <div class="find-row">
       <input
         class="find-input"
         type="text"
         placeholder="Find"
         bind:value={query}
-        oninput={handleFind}
+        aria-label="Find text"
+        oninput={() => {
+          window.dispatchEvent(new CustomEvent('editor-action', {
+            detail: {
+              action: 'search',
+              query,
+              caseSensitive,
+              useRegex,
+            },
+          }));
+        }}
       />
-      <button class="find-btn" onclick={() => { isReplaceMode = !isReplaceMode; }}>
-        {isReplaceMode ? '▼' : '▶'}
+      <button class="find-btn" onclick={() => {
+        window.dispatchEvent(new CustomEvent('editor-action', {
+          detail: { action: 'search-prev', query, caseSensitive, useRegex },
+        }));
+      }} aria-label="Previous match" title="Previous match (Shift+Enter)">↑</button>
+      <button class="find-btn" onclick={() => {
+        window.dispatchEvent(new CustomEvent('editor-action', {
+          detail: { action: 'search-next', query, caseSensitive, useRegex },
+        }));
+      }} aria-label="Next match" title="Next match (Enter)">↓</button>
+      <button class="find-btn" onclick={() => { replaceMode = !replaceMode; }} aria-label="Toggle replace" title="Toggle Replace">
+        {replaceMode ? '▼' : '▶'}
       </button>
-      <button class="find-btn" onclick={onClose}>✕</button>
+      <button class="find-btn" onclick={onClose} aria-label="Close find panel">✕</button>
     </div>
-    {#if isReplaceMode}
+    {#if replaceMode}
       <div class="find-row">
         <input
           class="find-input"
           type="text"
           placeholder="Replace"
           bind:value={replacement}
+          aria-label="Replace with"
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent('editor-action', {
+                detail: { action: 'replace', query, replacement, caseSensitive, useRegex },
+              }));
+            }
+          }}
         />
-        <button class="find-btn find-btn-action" onclick={handleReplace}>Replace</button>
+        <button
+          class="find-btn find-btn-action"
+          onclick={() => {
+            window.dispatchEvent(new CustomEvent('editor-action', {
+              detail: { action: 'replace', query, replacement, caseSensitive, useRegex },
+            }));
+          }}
+          aria-label="Replace current match"
+        >Replace</button>
+        <button
+          class="find-btn find-btn-action"
+          onclick={() => {
+            window.dispatchEvent(new CustomEvent('editor-action', {
+              detail: { action: 'replace-all', query, replacement, caseSensitive, useRegex },
+            }));
+          }}
+          aria-label="Replace all matches"
+        >All</button>
       </div>
     {/if}
     <div class="find-options">
       <button
         class="find-option"
         class:active={caseSensitive}
-        onclick={() => caseSensitive = !caseSensitive}
+        onclick={() => { caseSensitive = !caseSensitive; }}
+        title="Match Case"
+        aria-label="Match case"
+        aria-pressed={caseSensitive}
       >Aa</button>
       <button
         class="find-option"
         class:active={useRegex}
-        onclick={() => useRegex = !useRegex}
+        onclick={() => { useRegex = !useRegex; }}
+        title="Use Regular Expression"
+        aria-label="Use regular expression"
+        aria-pressed={useRegex}
       >.*</button>
     </div>
   </div>
@@ -79,7 +160,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-lg);
     padding: var(--sp-sm);
-    min-width: 320px;
+    min-width: 360px;
     z-index: 50;
     box-shadow: 0 4px 16px rgba(20, 20, 19, 0.1);
   }
@@ -88,6 +169,7 @@
     display: flex;
     gap: var(--sp-xxs);
     margin-bottom: var(--sp-xxs);
+    align-items: center;
   }
 
   .find-input {
@@ -116,6 +198,7 @@
     color: var(--muted);
     font-size: 12px;
     transition: background 0.15s;
+    flex-shrink: 0;
   }
 
   .find-btn:hover {

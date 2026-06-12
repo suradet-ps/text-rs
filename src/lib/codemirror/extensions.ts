@@ -20,6 +20,15 @@ const languageMap: Record<string, () => LanguageSupport> = {
   markdown: () => markdown(),
   sql: () => sql(),
   xml: () => xml(),
+  vue: () => html(),
+  bash: () => javascript(),
+  go: () => javascript(),
+  ruby: () => javascript(),
+  cpp: () => javascript(),
+  java: () => javascript(),
+  php: () => javascript(),
+  yaml: () => javascript(),
+  toml: () => javascript(),
 };
 
 export function getLanguage(lang: string): LanguageSupport {

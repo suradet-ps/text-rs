@@ -1,4 +1,4 @@
-import { EditorState } from '@codemirror/state';
+import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine } from '@codemirror/view';
 import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, indentOnInput, foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -10,6 +10,10 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { textRsLightTheme } from './theme';
 import { getLanguage } from './extensions';
 import type { Settings } from '$lib/stores/settings.svelte';
+
+export const wrapCompartment = new Compartment();
+export const fontSizeCompartment = new Compartment();
+export const themeCompartment = new Compartment();
 
 export function createEditorState(
   content: string,
@@ -51,12 +55,12 @@ export function createEditorState(
         ...lintKeymap,
         indentWithTab,
       ]),
-      settings.wordWrap ? EditorView.lineWrapping : [],
-      theme === 'dark' ? oneDark : textRsLightTheme,
-      EditorView.theme({
+      wrapCompartment.of(settings.wordWrap ? EditorView.lineWrapping : []),
+      themeCompartment.of(theme === 'dark' ? oneDark : textRsLightTheme),
+      fontSizeCompartment.of(EditorView.theme({
         '&': { fontSize: `${settings.fontSize}px` },
         '.cm-scroller': { fontFamily: `'${settings.fontFamily}', monospace` },
-      }),
+      })),
       langExtension,
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -64,6 +68,19 @@ export function createEditorState(
         }
         onUpdate(update.view);
       }),
+    ],
+  });
+}
+
+export function reconfigureView(view: EditorView, settings: Settings, theme: 'light' | 'dark') {
+  view.dispatch({
+    effects: [
+      wrapCompartment.reconfigure(settings.wordWrap ? EditorView.lineWrapping : []),
+      themeCompartment.reconfigure(theme === 'dark' ? oneDark : textRsLightTheme),
+      fontSizeCompartment.reconfigure(EditorView.theme({
+        '&': { fontSize: `${settings.fontSize}px` },
+        '.cm-scroller': { fontFamily: `'${settings.fontFamily}', monospace` },
+      })),
     ],
   });
 }

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { EditorView } from '@codemirror/view';
-  import { createEditorState } from '$lib/codemirror/setup';
-  import { tabsStore } from '$lib/stores/tabs.svelte';
+  import { EditorState } from '@codemirror/state';
+  import { undo, redo, selectAll } from '@codemirror/commands';
+  import { search, openSearchPanel, closeSearchPanel, getSearchQuery, setSearchQuery } from '@codemirror/search';
+  import { createEditorState, reconfigureView } from '$lib/codemirror/setup';
   import { settingsStore } from '$lib/stores/settings.svelte';
 
   interface Props {
@@ -21,7 +23,7 @@
   let suppressNextUpdate = false;
 
   function getTheme(): 'light' | 'dark' {
-    return settingsStore.theme === 'dark' ? 'dark' : 'light';
+    return settingsStore.getEffectiveTheme();
   }
 
   function destroyEditor() {
@@ -53,22 +55,96 @@
     );
 
     view = new EditorView({ state, parent: editorEl });
+    view.focus();
   }
 
-  onMount(() => {
-    createEditor(content, language);
-    lastTabId = tabId;
-  });
+  // Expose editor methods to parent via custom events
+  function handleEditorAction(e: Event) {
+    if (!view) return;
+    const detail = (e as CustomEvent).detail;
+    const action = detail.action;
 
-  onDestroy(() => {
-    destroyEditor();
-  });
+    switch (action) {
+      case 'undo':
+        undo(view);
+        break;
+      case 'redo':
+        redo(view);
+        break;
+      case 'cut':
+        document.execCommand('cut');
+        break;
+      case 'copy':
+        document.execCommand('copy');
+        break;
+      case 'paste':
+        document.execCommand('paste');
+        break;
+      case 'select-all':
+        selectAll(view);
+        break;
+      case 'find':
+        openSearchPanel(view);
+        break;
+      case 'find-replace':
+        openSearchPanel(view);
+        break;
+      case 'go-to-line': {
+        const line = detail.line;
+        if (line && line > 0) {
+          const lineCount = view.state.doc.lines;
+          const targetLine = Math.min(Math.max(1, line), lineCount);
+          const lineObj = view.state.doc.line(targetLine);
+          view.dispatch({
+            selection: { anchor: lineObj.from, head: lineObj.from },
+            effects: EditorView.scrollIntoView(lineObj.from, { y: 'center' }),
+          });
+          view.focus();
+        }
+        break;
+      }
+    }
+  }
 
   $effect(() => {
     if (tabId !== lastTabId && view) {
       lastTabId = tabId;
       createEditor(content, language);
     }
+  });
+
+  // Handle content prop changes from outside (e.g., tab switch restore)
+  $effect(() => {
+    if (view && content !== view.state.doc.toString()) {
+      suppressNextUpdate = true;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: content },
+      });
+      requestAnimationFrame(() => { suppressNextUpdate = false; });
+    }
+  });
+
+  // Handle font size changes
+  $effect(() => {
+    const size = settingsStore.fontSize;
+    const wrap = settingsStore.wordWrap;
+    const theme = getTheme();
+    if (view) {
+      reconfigureView(view, settingsStore.settings, theme);
+    }
+  });
+
+  onMount(() => {
+    createEditor(content, language);
+    lastTabId = tabId;
+
+    // Listen for editor actions
+    window.addEventListener('editor-action', handleEditorAction as EventListener);
+  });
+
+  onDestroy(() => {
+    destroyEditor();
+    window.removeEventListener('editor-action', handleEditorAction as EventListener);
   });
 </script>
 
@@ -85,9 +161,11 @@
   .editor-wrapper :global(.cm-editor) {
     height: 100%;
     flex: 1;
+    outline: none;
   }
 
   .editor-wrapper :global(.cm-scroller) {
     overflow: auto;
+    font-family: 'JetBrains Mono', monospace;
   }
 </style>

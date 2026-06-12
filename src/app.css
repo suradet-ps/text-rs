@@ -44,6 +44,21 @@
   --sp-xxl: 48px;
 }
 
+[data-theme="dark"] {
+  --canvas: var(--surface-dark);
+  --surface-soft: var(--surface-dark-elevated);
+  --surface-card: var(--surface-dark-soft);
+  --surface-cream-strong: #2a2825;
+  --hairline: #383532;
+  --hairline-soft: #2e2c29;
+
+  --ink: var(--on-dark);
+  --body-strong: var(--on-dark);
+  --body: var(--on-dark-soft);
+  --muted: #78756f;
+  --muted-soft: #5c5954;
+}
+
 *,
 *::before,
 *::after {
@@ -72,6 +87,17 @@ body {
   flex-direction: column;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 button {
   font-family: inherit;
   cursor: pointer;
@@ -88,4 +114,8 @@ input {
   background: none;
   border: none;
   outline: none;
+}
+
+::selection {
+  background: rgba(204, 120, 92, 0.2);
 }

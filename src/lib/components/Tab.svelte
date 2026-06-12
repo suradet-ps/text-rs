@@ -3,18 +3,27 @@
     fileName: string;
     isDirty: boolean;
     isActive: boolean;
+    tabIndex: number;
     onclick: () => void;
+    onmiddleclick: () => void;
     onclose: () => void;
     oncontextmenu: (e: MouseEvent) => void;
     onrename: (name: string) => void;
+    ondragstart: () => void;
+    ondragover: (e: DragEvent) => void;
+    ondrop: (e: DragEvent) => void;
+    ondragend: () => void;
   }
 
-  let { fileName, isDirty, isActive, onclick, onclose, oncontextmenu, onrename }: Props = $props();
+  let {
+    fileName, isDirty, isActive, tabIndex,
+    onclick, onmiddleclick, onclose, oncontextmenu, onrename,
+    ondragstart, ondragover, ondrop, ondragend,
+  }: Props = $props();
 
   let editing = $state(false);
   let editValue = $state('');
-  // svelte-ignore non_reactive_update
-  let inputEl: HTMLInputElement;
+  let inputEl = $state<HTMLInputElement | null>(null);
 
   function handleDblClick() {
     editValue = fileName;
@@ -23,6 +32,13 @@
       inputEl?.focus();
       inputEl?.select();
     }, 0);
+  }
+
+  function handleMiddleClick(e: MouseEvent) {
+    if (e.button === 1) {
+      e.preventDefault();
+      onmiddleclick();
+    }
   }
 
   function commitRename() {
@@ -45,12 +61,20 @@
 <div
   class="tab"
   class:active={isActive}
-  {onclick}
+  role="tab"
+  aria-selected={isActive}
+  aria-label="{fileName}{isDirty ? ' (unsaved)' : ''}"
+  tabindex="-1"
+  draggable="true"
+  onclick={onclick}
   ondblclick={handleDblClick}
   oncontextmenu={(e) => { e.preventDefault(); oncontextmenu(e); }}
+  onmousedown={handleMiddleClick}
+  ondragstart={ondragstart}
+  ondragover={ondragover}
+  ondrop={ondrop}
+  ondragend={ondragend}
   onkeydown={(e) => e.key === 'Enter' && onclick()}
-  role="tab"
-  tabindex="-1"
 >
   {#if editing}
     <input
@@ -66,14 +90,15 @@
     <span class="tab-name">{fileName}</span>
   {/if}
   {#if isDirty && !editing}
-    <span class="tab-dot">•</span>
+    <span class="tab-dot" aria-hidden="true">•</span>
   {/if}
   <button
     class="tab-close"
     onclick={(e) => { e.stopPropagation(); onclose(); }}
-    title="Close"
+    title="Close tab"
+    aria-label="Close {fileName}"
   >
-    <svg width="8" height="8" viewBox="0 0 8 8">
+    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
       <path fill="currentColor" d="M1.8 0.8L4 3l2.2-2.2.6.6L4.6 3.6l2.2 2.2-.6.6L4 4.2l-2.2 2.2-.6-.6L3.4 3.6 1.2 1.4z"/>
     </svg>
   </button>
@@ -98,6 +123,13 @@
     transition: background 0.15s, color 0.15s;
     position: relative;
     margin: 3px 1px;
+    user-select: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab {
+      transition: none;
+    }
   }
 
   .tab:hover {
@@ -148,6 +180,12 @@
     opacity: 0;
     transition: opacity 0.15s, background 0.15s;
     flex-shrink: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tab-close {
+      transition: none;
+    }
   }
 
   .tab:hover .tab-close {

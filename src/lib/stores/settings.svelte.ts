@@ -4,33 +4,56 @@ export interface Settings {
   fontFamily: string;
   wordWrap: boolean;
   showLineNumbers: boolean;
+  showStatusBar: boolean;
   tabSize: number;
   insertSpaces: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
-  theme: 'light',
+  theme: 'system',
   fontSize: 14,
   fontFamily: 'JetBrains Mono',
   wordWrap: false,
   showLineNumbers: true,
-  tabSize: 2,
+  showStatusBar: true,
+  tabSize: 4,
   insertSpaces: true,
 };
 
-function loadSettings(): Settings {
+let _settings = $state<Settings>({ ...DEFAULT_SETTINGS });
+let _initialized = false;
+let _store: any = null;
+
+async function initStore() {
+  if (_initialized) return;
   try {
-    const raw = localStorage.getItem('sabot-settings');
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const { Store } = await import('@tauri-apps/plugin-store');
+    const store = await Store.load('.settings.dat');
+    _store = store;
+    const stored = await store.get<Partial<Settings>>('settings');
+    if (stored) {
+      _settings = { ...DEFAULT_SETTINGS, ...stored };
+    }
+  } catch {
+    // Fallback to localStorage
+    try {
+      const raw = localStorage.getItem('text-rs-settings');
+      if (raw) _settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    } catch {}
+  }
+  _initialized = true;
+}
+
+async function persistSettings() {
+  try {
+    if (_store) {
+      await _store.set('settings', _settings);
+      await _store.save();
+    } else {
+      localStorage.setItem('text-rs-settings', JSON.stringify(_settings));
+    }
   } catch {}
-  return { ...DEFAULT_SETTINGS };
 }
-
-function saveSettings(settings: Settings) {
-  localStorage.setItem('sabot-settings', JSON.stringify(settings));
-}
-
-let _settings = $state<Settings>(loadSettings());
 
 export const settingsStore = {
   get settings() { return _settings; },
@@ -38,11 +61,49 @@ export const settingsStore = {
   get fontSize() { return _settings.fontSize; },
   get wordWrap() { return _settings.wordWrap; },
   get showLineNumbers() { return _settings.showLineNumbers; },
+  get showStatusBar() { return _settings.showStatusBar; },
   get tabSize() { return _settings.tabSize; },
+  get insertSpaces() { return _settings.insertSpaces; },
+  get initialized() { return _initialized; },
+
+  async init() {
+    await initStore();
+    // Apply system theme if needed
+    this.applySystemTheme();
+  },
+
+  getEffectiveTheme(): 'light' | 'dark' {
+    if (_settings.theme === 'system') {
+      if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+      }
+      return 'light';
+    }
+    return _settings.theme;
+  },
+
+  applySystemTheme() {
+    if (typeof window !== 'undefined') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      document.documentElement.setAttribute('data-theme', _settings.theme);
+      const handler = () => {
+        if (_settings.theme === 'system') {
+          document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+        }
+      };
+      mq.addEventListener('change', handler);
+      handler();
+    }
+  },
 
   update(partial: Partial<Settings>) {
     _settings = { ..._settings, ...partial };
-    saveSettings(_settings);
+    document.documentElement.setAttribute('data-theme', _settings.theme);
+    if (_settings.theme === 'system' && typeof window !== 'undefined') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      document.documentElement.setAttribute('data-theme', mq.matches ? 'dark' : 'light');
+    }
+    persistSettings();
   },
 
   increaseFontSize() {
@@ -63,5 +124,9 @@ export const settingsStore = {
 
   toggleLineNumbers() {
     this.update({ showLineNumbers: !_settings.showLineNumbers });
+  },
+
+  toggleStatusBar() {
+    this.update({ showStatusBar: !_settings.showStatusBar });
   },
 };

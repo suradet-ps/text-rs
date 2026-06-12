@@ -7,7 +7,6 @@ export const textRsLightTheme = EditorView.theme({
   },
   '.cm-content': {
     caretColor: 'var(--primary)',
-    fontFamily: 'var(--font-mono)',
   },
   '.cm-cursor': {
     borderLeftColor: 'var(--primary)',
@@ -45,3 +44,41 @@ export const textRsLightTheme = EditorView.theme({
     backgroundColor: 'rgba(204, 120, 92, 0.35)',
   },
 }, { dark: false });
+
+export const textRsDarkTheme = EditorView.theme({
+  '&': {
+    backgroundColor: 'var(--surface-dark)',
+    color: 'var(--on-dark)',
+  },
+  '.cm-content': {
+    caretColor: 'var(--primary)',
+  },
+  '.cm-cursor': {
+    borderLeftColor: 'var(--primary)',
+  },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'rgba(204, 120, 92, 0.25)',
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'rgba(204, 120, 92, 0.08)',
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'rgba(204, 120, 92, 0.12)',
+  },
+  '.cm-gutters': {
+    backgroundColor: 'var(--surface-dark-elevated)',
+    color: 'var(--on-dark-soft)',
+    borderRight: '1px solid var(--surface-dark-soft)',
+  },
+  '.cm-lineNumbers .cm-gutterElement': {
+    color: 'var(--on-dark-soft)',
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--surface-dark-soft)',
+    color: 'var(--on-dark-soft)',
+  },
+  '.cm-matchingBracket': {
+    backgroundColor: 'rgba(204, 120, 92, 0.3)',
+    outline: '1px solid var(--primary)',
+  },
+}, { dark: true });

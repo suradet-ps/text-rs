@@ -5,6 +5,8 @@ export interface Tab {
   content: string;
   savedContent: string;
   language: string;
+  encoding: string;
+  lineEnding: string;
   cursorLine: number;
   cursorCol: number;
   scrollTop: number;
@@ -14,6 +16,8 @@ export interface FilePayload {
   path: string;
   content: string;
   file_name: string;
+  encoding?: string;
+  line_ending?: string;
 }
 
 let _tabs = $state<Tab[]>([]);
@@ -37,6 +41,8 @@ export const tabsStore = {
       content: '',
       savedContent: '',
       language: 'text',
+      encoding: 'UTF-8',
+      lineEnding: 'LF',
       cursorLine: 1,
       cursorCol: 1,
       scrollTop: 0,
@@ -52,6 +58,12 @@ export const tabsStore = {
       _activeTabId = existing.id;
       return existing;
     }
+
+    // If there's only one empty untitled tab, replace it
+    if (_tabs.length === 1 && _tabs[0].path === null && _tabs[0].content === '') {
+      _tabs = [];
+    }
+
     const tab: Tab = {
       id: crypto.randomUUID(),
       path: payload.path,
@@ -59,6 +71,8 @@ export const tabsStore = {
       content: payload.content,
       savedContent: payload.content,
       language: detectLangFromPath(payload.path),
+      encoding: payload.encoding ?? 'UTF-8',
+      lineEnding: payload.line_ending ?? 'LF',
       cursorLine: 1,
       cursorCol: 1,
       scrollTop: 0,
@@ -78,6 +92,10 @@ export const tabsStore = {
     if (_activeTabId === id) {
       _activeTabId = _tabs.length > 0 ? _tabs[Math.min(idx, _tabs.length - 1)].id : null;
     }
+    // Ensure at least one tab exists
+    if (_tabs.length === 0) {
+      this.newTab();
+    }
     return true;
   },
 
@@ -87,6 +105,25 @@ export const tabsStore = {
     _tabs = _tabs.filter(t => t.id !== id);
     if (_activeTabId === id) {
       _activeTabId = _tabs.length > 0 ? _tabs[Math.min(idx, _tabs.length - 1)].id : null;
+    }
+    // Ensure at least one tab exists
+    if (_tabs.length === 0) {
+      _untitledCounter++;
+      const tab: Tab = {
+        id: crypto.randomUUID(),
+        path: null,
+        fileName: `untitled-${_untitledCounter}`,
+        content: '',
+        savedContent: '',
+        language: 'text',
+        encoding: 'UTF-8',
+        lineEnding: 'LF',
+        cursorLine: 1,
+        cursorCol: 1,
+        scrollTop: 0,
+      };
+      _tabs = [..._tabs, tab];
+      _activeTabId = tab.id;
     }
   },
 
@@ -123,6 +160,13 @@ export const tabsStore = {
     _tabs = _tabs.map(t => t.id === id ? { ...t, scrollTop } : t);
   },
 
+  reorder(fromIdx: number, toIdx: number) {
+    const tabs = [..._tabs];
+    const [moved] = tabs.splice(fromIdx, 1);
+    tabs.splice(toIdx, 0, moved);
+    _tabs = tabs;
+  },
+
   getDirtyTabs(): Tab[] {
     return _tabs.filter(t => t.content !== t.savedContent);
   },
@@ -142,12 +186,18 @@ function detectLangFromPath(path: string | null): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   const extMap: Record<string, string> = {
     rs: 'rust', ts: 'typescript', tsx: 'typescript',
-    js: 'javascript', jsx: 'javascript',
-    py: 'python', html: 'html', css: 'css',
-    md: 'markdown', json: 'json', sql: 'sql',
-    xml: 'xml', vue: 'vue', cpp: 'cpp', cc: 'cpp',
-    c: 'cpp', h: 'cpp', java: 'java', php: 'php',
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    py: 'python', pyw: 'python', html: 'html', htm: 'html',
+    css: 'css', scss: 'css', less: 'css',
+    md: 'markdown', markdown: 'markdown',
+    json: 'json', jsonc: 'json', sql: 'sql', graphql: 'sql',
+    xml: 'xml', svg: 'xml', vue: 'vue', svelte: 'javascript',
+    cpp: 'cpp', cc: 'cpp', c: 'cpp', h: 'cpp', hpp: 'cpp',
+    java: 'java', php: 'php', go: 'go', rb: 'ruby',
     toml: 'toml', yaml: 'yaml', yml: 'yaml',
+    sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+    txt: 'text', log: 'text', csv: 'text', ini: 'text', cfg: 'text', conf: 'text',
+    env: 'text', rst: 'text',
   };
   return extMap[ext] ?? 'text';
 }
