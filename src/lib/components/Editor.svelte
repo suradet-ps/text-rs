@@ -20,7 +20,7 @@
   let editorEl: HTMLDivElement;
   let view: EditorView | null = null;
   let lastTabId = '';
-  let suppressNextUpdate = $state(false);
+  let suppressNextUpdate = false;
 
   function getTheme(): 'light' | 'dark' {
     return settingsStore.getEffectiveTheme();
@@ -58,7 +58,6 @@
     view.focus();
   }
 
-  // Expose editor methods to parent via custom events
   function handleEditorAction(e: Event) {
     if (!view) return;
     const detail = (e as CustomEvent).detail;
@@ -89,6 +88,13 @@
       case 'find-replace':
         openSearchPanel(view);
         break;
+      case 'set-language': {
+        const lang = detail.language;
+        if (lang) {
+          createEditor(view.state.doc.toString(), lang);
+        }
+        break;
+      }
       case 'go-to-line': {
         const line = detail.line;
         if (line && line > 0) {
@@ -113,15 +119,6 @@
     }
   });
 
-  // Handle language changes (from StatusBar picker) within the same tab
-  $effect(() => {
-    void language;
-    if (view && tabId === lastTabId && lastTabId !== '') {
-      createEditor(view.state.doc.toString(), language);
-    }
-  });
-
-  // Handle content prop changes from outside (e.g., tab switch restore)
   $effect(() => {
     if (view && content !== view.state.doc.toString()) {
       suppressNextUpdate = true;
@@ -132,11 +129,10 @@
     }
   });
 
-  // Handle font size, word wrap, and theme changes
   $effect(() => {
     void settingsStore.themeVersion;
-    const size = settingsStore.fontSize;
-    const wrap = settingsStore.wordWrap;
+    void settingsStore.fontSize;
+    void settingsStore.wordWrap;
     const theme = getTheme();
     if (view) {
       reconfigureView(view, settingsStore.settings, theme);
@@ -147,7 +143,6 @@
     createEditor(content, language);
     lastTabId = tabId;
 
-    // Listen for editor actions
     window.addEventListener('editor-action', handleEditorAction);
   });
 

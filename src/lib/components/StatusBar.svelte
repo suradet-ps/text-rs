@@ -69,6 +69,9 @@
     const tab = tabsStore.activeTab;
     if (tab) {
       tabsStore.setLanguage(tab.id, key);
+      window.dispatchEvent(new CustomEvent('editor-action', {
+        detail: { action: 'set-language', language: key },
+      }));
       showLangPicker = false;
     }
   }
