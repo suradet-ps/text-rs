@@ -101,7 +101,10 @@
       }
     ],
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "entitlements": "./entitlements.plist",
+      "infoPlist": "./custom-info.plist",
+      "signingIdentity": "-"
     },
     "windows": {
       "nsis": {

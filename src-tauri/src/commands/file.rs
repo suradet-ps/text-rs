@@ -39,6 +39,27 @@ fn detect_line_ending(content: &str) -> &'static str {
     }
 }
 
+fn ensure_extension(path_str: &str, default_ext: &str) -> String {
+    let path = PathBuf::from(path_str);
+    let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+    let file_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    if file_name.is_empty() {
+        return path_str.to_string();
+    }
+
+    let name_without_leading_dots = file_name.trim_start_matches('.');
+    if !name_without_leading_dots.contains('.') {
+        let new_name = format!("{}.{}", file_name, default_ext);
+        return parent.join(new_name).to_string_lossy().to_string();
+    }
+
+    path_str.to_string()
+}
+
 fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
     let normalized = match line_ending {
         "CRLF" => content.replace('\n', "\r\n").replace("\r\r\n", "\r\n"),
@@ -165,6 +186,12 @@ pub async fn save_file_as(
         if let Some(name) = suggested_name {
             dialog = dialog.set_file_name(&name);
         }
+        dialog = dialog
+            .add_filter("Text Files", &["txt", "md", "log", "csv", "tsv", "ini", "cfg", "conf", "env", "rst"])
+            .add_filter("Source Code", &["rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyw", "go", "rb", "java", "c", "cpp", "cc", "h", "hpp", "php", "sh", "bash", "zsh", "fish"])
+            .add_filter("Web Files", &["html", "htm", "css", "scss", "less", "svg"])
+            .add_filter("Data Files", &["json", "jsonc", "xml", "toml", "yaml", "yml", "sql", "graphql", "gql"])
+            .add_filter("All Files", &["*"]);
         dialog.blocking_save_file()
     })
     .await
@@ -175,7 +202,7 @@ pub async fn save_file_as(
             let path_buf = path
                 .into_path()
                 .map_err(|e| format!("Invalid file path: {:?}", e))?;
-            let path_str = path_buf.to_string_lossy().to_string();
+            let path_str = ensure_extension(&path_buf.to_string_lossy(), "txt");
 
             let le = line_ending.unwrap_or_else(|| "LF".to_string());
             let enc = encoding.unwrap_or_else(|| "UTF-8".to_string());

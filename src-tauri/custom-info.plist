@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>text-rs needs access to your Desktop to open and save files.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>text-rs needs access to your Documents folder to open and save files.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>text-rs needs access to your Downloads folder to open and save files.</string>
+</dict>
+</plist>
