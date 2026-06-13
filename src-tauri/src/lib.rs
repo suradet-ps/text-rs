@@ -1,8 +1,11 @@
 mod commands;
 mod state;
+#[cfg(target_os = "macos")]
+mod macos_events;
 
 use state::recent::RecentFilesState;
 use state::recovery::RecoveryState;
+use state::PendingFilesState;
 use tauri::Manager;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
@@ -287,6 +290,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+
         .invoke_handler(tauri::generate_handler![
             commands::file::open_file,
             commands::file::read_file,
@@ -297,6 +301,7 @@ pub fn run() {
             commands::file::get_recent_files,
             commands::file::remove_recent_file,
             commands::file::check_file_size,
+            commands::file::get_pending_files,
             commands::window::set_window_title,
             commands::recovery::save_recovery_data,
             commands::recovery::check_recovery_data,
@@ -304,6 +309,7 @@ pub fn run() {
             commands::recovery::get_app_data_dir,
         ])
         .setup(|app| {
+            let (pending, pending_arc) = PendingFilesState::new();
             if let Ok(dir) = app.path().app_data_dir() {
                 init_logging(&dir);
 
@@ -313,12 +319,39 @@ pub fn run() {
                 app.manage(RecentFilesState::new(dir));
             }
 
+            // Capture file paths passed as command-line args (macOS "Open With" / drag-to-icon)
+            {
+                let args: Vec<String> = std::env::args().skip(1).collect();
+                let file_args: Vec<String> = args
+                    .iter()
+                    .filter(|a| !a.starts_with('-'))
+                    .cloned()
+                    .filter(|a| std::path::Path::new(a).exists())
+                    .collect();
+                if !file_args.is_empty() {
+                    log::info!("Files from command-line args: {:?}", file_args);
+                    if let Ok(mut paths) = pending_arc.lock() {
+                        paths.extend(file_args);
+                    }
+                }
+            }
+
+            app.manage(pending);
+
+            #[cfg(target_os = "macos")]
+            {
+                macos_events::init(pending_arc.clone());
+                macos_events::macos::capture_launch_file(&pending_arc);
+                macos_events::macos::install_handler(pending_arc.clone());
+            }
+
             let menu = build_menu(app.handle());
             if let Some(window) = app.get_webview_window("main") {
                 window.set_menu(menu).ok();
             }
 
             log::info!("text-rs started");
+            log::info!("CLI args: {:?}", std::env::args().collect::<Vec<_>>());
 
             Ok(())
         })
@@ -331,14 +364,19 @@ pub fn run() {
         }
         tauri::RunEvent::Opened { urls, .. } => {
             use tauri::Emitter;
-            if let Some(window) = app_handle.get_webview_window("main") {
-                let paths: Vec<String> = urls
-                    .iter()
-                    .filter_map(|url| url.to_file_path().ok())
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect();
-                if !paths.is_empty() {
-                    log::info!("Files opened via OS: {:?}", paths);
+            let paths: Vec<String> = urls
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            if !paths.is_empty() {
+                log::info!("Files opened via OS: {:?}", paths);
+                if let Some(pending) = app_handle.try_state::<PendingFilesState>() {
+                    if let Ok(mut p) = pending.inner.lock() {
+                        p.extend(paths.clone());
+                    }
+                }
+                if let Some(window) = app_handle.get_webview_window("main") {
                     window.emit("file-opened", paths).ok();
                 }
             }

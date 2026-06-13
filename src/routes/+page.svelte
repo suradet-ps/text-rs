@@ -446,6 +446,16 @@
         tabsStore.newTab();
       }
 
+      // Open files passed via OS (right-click → Open with, drag onto icon, etc.)
+      try {
+        const pending = await invoke<string[]>('get_pending_files');
+        for (const filePath of pending) {
+          await handleOpenFromPath(filePath);
+        }
+      } catch {
+        // Silent - no pending files
+      }
+
       await checkRecovery();
 
       updateWindowTitle();

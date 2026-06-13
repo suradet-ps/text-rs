@@ -285,3 +285,10 @@ pub async fn remove_recent_file(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_pending_files(
+    state: tauri::State<'_, crate::state::PendingFilesState>,
+) -> Result<Vec<String>, String> {
+    Ok(state.drain())
+}

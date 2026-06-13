@@ -20,6 +20,7 @@ chardet = { version = "0.2", default-features = false }
 notify = { version = "7", features = ["macos_kqueue"] }
 log = "0.4"
 simplelog = "0.12"
+objc = "0.2.7"
 
 [profile.release]
 panic = "abort"
