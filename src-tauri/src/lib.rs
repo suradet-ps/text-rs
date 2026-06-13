@@ -1,11 +1,13 @@
+#![allow(unexpected_cfgs)]
+
 mod commands;
-mod state;
 #[cfg(target_os = "macos")]
 mod macos_events;
+mod state;
 
+use state::PendingFilesState;
 use state::recent::RecentFilesState;
 use state::recovery::RecoveryState;
-use state::PendingFilesState;
 use tauri::Manager;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
@@ -290,7 +292,6 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-
         .invoke_handler(tauri::generate_handler![
             commands::file::open_file,
             commands::file::read_file,
@@ -325,8 +326,8 @@ pub fn run() {
                 let file_args: Vec<String> = args
                     .iter()
                     .filter(|a| !a.starts_with('-'))
-                    .cloned()
                     .filter(|a| std::path::Path::new(a).exists())
+                    .cloned()
                     .collect();
                 if !file_args.is_empty() {
                     log::info!("Files from command-line args: {:?}", file_args);
@@ -371,10 +372,10 @@ pub fn run() {
                 .collect();
             if !paths.is_empty() {
                 log::info!("Files opened via OS: {:?}", paths);
-                if let Some(pending) = app_handle.try_state::<PendingFilesState>() {
-                    if let Ok(mut p) = pending.inner.lock() {
-                        p.extend(paths.clone());
-                    }
+                if let Some(pending) = app_handle.try_state::<PendingFilesState>()
+                    && let Ok(mut p) = pending.inner.lock()
+                {
+                    p.extend(paths.clone());
                 }
                 if let Some(window) = app_handle.get_webview_window("main") {
                     window.emit("file-opened", paths).ok();

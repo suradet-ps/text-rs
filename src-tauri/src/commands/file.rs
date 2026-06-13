@@ -81,9 +81,7 @@ pub async fn open_file(app: tauri::AppHandle) -> Result<Option<FilePayload>, Str
     log::info!("[open_file] Starting file dialog...");
     let file_path = tokio::task::spawn_blocking(move || {
         log::info!("[open_file] Showing native file dialog...");
-        let result = app.dialog()
-            .file()
-            .blocking_pick_file();
+        let result = app.dialog().file().blocking_pick_file();
         log::info!("[open_file] Dialog returned: {:?}", result.is_some());
         result
     })
@@ -202,10 +200,26 @@ pub async fn save_file_as(
             dialog = dialog.set_file_name(&name);
         }
         dialog = dialog
-            .add_filter("Text Files", &["txt", "md", "log", "csv", "tsv", "ini", "cfg", "conf", "env", "rst"])
-            .add_filter("Source Code", &["rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyw", "go", "rb", "java", "c", "cpp", "cc", "h", "hpp", "php", "sh", "bash", "zsh", "fish"])
+            .add_filter(
+                "Text Files",
+                &[
+                    "txt", "md", "log", "csv", "tsv", "ini", "cfg", "conf", "env", "rst",
+                ],
+            )
+            .add_filter(
+                "Source Code",
+                &[
+                    "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyw", "go", "rb", "java",
+                    "c", "cpp", "cc", "h", "hpp", "php", "sh", "bash", "zsh", "fish",
+                ],
+            )
             .add_filter("Web Files", &["html", "htm", "css", "scss", "less", "svg"])
-            .add_filter("Data Files", &["json", "jsonc", "xml", "toml", "yaml", "yml", "sql", "graphql", "gql"]);
+            .add_filter(
+                "Data Files",
+                &[
+                    "json", "jsonc", "xml", "toml", "yaml", "yml", "sql", "graphql", "gql",
+                ],
+            );
         dialog.blocking_save_file()
     })
     .await

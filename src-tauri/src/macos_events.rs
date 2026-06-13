@@ -34,7 +34,8 @@ pub mod macos {
             }
 
             log::info!("Found current Apple Event at launch");
-            let descriptor: *mut Object = msg_send![event, paramDescriptorForKeyword: KEY_DIRECT_OBJECT];
+            let descriptor: *mut Object =
+                msg_send![event, paramDescriptorForKeyword: KEY_DIRECT_OBJECT];
             if descriptor.is_null() {
                 log::info!("No DirectObject descriptor in launch event");
                 return;
@@ -80,14 +81,18 @@ pub mod macos {
             );
             cls.register();
 
-            let handler_class = Class::get("TARsFileOpenHandler").expect("TARsFileOpenHandler class not found");
+            let handler_class =
+                Class::get("TARsFileOpenHandler").expect("TARsFileOpenHandler class not found");
             let handler: *mut Object = msg_send![handler_class, new];
 
-            let em_class = Class::get("NSAppleEventManager").expect("NSAppleEventManager not found");
+            let em_class =
+                Class::get("NSAppleEventManager").expect("NSAppleEventManager not found");
             let em: *mut Object = msg_send![em_class, sharedAppleEventManager];
 
-            let event_class: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"aevt\0".as_ptr()];
-            let event_id: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"odoc\0".as_ptr()];
+            let event_class: *mut Object =
+                msg_send![class!(NSString), stringWithUTF8String: c"aevt".as_ptr()];
+            let event_id: *mut Object =
+                msg_send![class!(NSString), stringWithUTF8String: c"odoc".as_ptr()];
 
             let sel_handler = sel!(handleOpenDocument:withReplyEvent:);
             let _: () = msg_send![em,
@@ -103,7 +108,8 @@ pub mod macos {
         HANDLER_PENDING.lock().unwrap().replace(pending);
     }
 
-    static HANDLER_PENDING: std::sync::Mutex<Option<Arc<Mutex<Vec<String>>>>> = std::sync::Mutex::new(None);
+    static HANDLER_PENDING: std::sync::Mutex<Option<Arc<Mutex<Vec<String>>>>> =
+        std::sync::Mutex::new(None);
 
     extern "C" fn handle_open_event(
         _self: &Object,
@@ -112,7 +118,8 @@ pub mod macos {
         _reply: *mut Object,
     ) {
         unsafe {
-            let descriptor: *mut Object = msg_send![event, paramDescriptorForKeyword: KEY_DIRECT_OBJECT];
+            let descriptor: *mut Object =
+                msg_send![event, paramDescriptorForKeyword: KEY_DIRECT_OBJECT];
             if descriptor.is_null() {
                 return;
             }
@@ -132,12 +139,11 @@ pub mod macos {
             let path_str = cstr.to_string_lossy().into_owned();
             if !path_str.is_empty() {
                 log::info!("Apple Event captured file: {}", path_str);
-                if let Ok(guard) = HANDLER_PENDING.lock() {
-                    if let Some(pending) = guard.as_ref() {
-                        if let Ok(mut p) = pending.lock() {
-                            p.push(path_str);
-                        }
-                    }
+                if let Ok(guard) = HANDLER_PENDING.lock()
+                    && let Some(pending) = guard.as_ref()
+                    && let Ok(mut p) = pending.lock()
+                {
+                    p.push(path_str);
                 }
             }
         }
