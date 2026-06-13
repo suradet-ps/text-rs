@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   interface Props {
     open: boolean;
     title: string;
@@ -29,15 +31,32 @@
     onCancel,
   }: Props = $props();
 
-  let dialogEl: HTMLDivElement = $state()!;
+  let dialogEl: HTMLDivElement | undefined = $state();
 
+  // Esc closes the dialog while it is open. The previous implementation
+  // attached the handler to a `role="presentation"` div which is not
+  // focusable, so keydown events never reached it.
   $effect(() => {
-    if (open) {
-      setTimeout(() => {
-        const btn = dialogEl?.querySelector('.dialog-btn-save') as HTMLButtonElement;
-        btn?.focus();
-      }, 50);
-    }
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel?.();
+      }
+    };
+    document.addEventListener('keydown', handler, { capture: true });
+    return () => document.removeEventListener('keydown', handler, { capture: true });
+  });
+
+  // Focus the primary (Save) button on open for keyboard users.
+  $effect(() => {
+    if (!open) return;
+    void (async () => {
+      await tick();
+      const btn = dialogEl?.querySelector<HTMLButtonElement>('.dialog-btn-save');
+      btn?.focus();
+    })();
   });
 </script>
 
@@ -45,7 +64,6 @@
   <div
     class="dialog-backdrop"
     onclick={onCancel}
-    onkeydown={(e) => e.key === 'Escape' && onCancel?.()}
     role="presentation"
   >
     <div

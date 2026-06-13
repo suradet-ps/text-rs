@@ -12,6 +12,7 @@
   import { dispatchEditorAction } from '$lib/editor/actions';
   import { errorMessage } from '$lib/utils/error';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { listen as listenTauriEvent, type UnlistenFn } from '@tauri-apps/api/event';
   import type { FilePayload, RecoveryEntry } from '$lib/types/ipc';
 
   const SOFT_LIMIT_BYTES = 10 * 1024 * 1024;
@@ -87,8 +88,24 @@
     try {
       const payload = await ipc.openFile();
       if (payload) {
+        console.log('[openFile] payload received:', {
+          path: payload.path,
+          file_name: payload.file_name,
+          content_length: payload.content.length,
+          content_preview: payload.content.slice(0, 100),
+          encoding: payload.encoding,
+          line_ending: payload.line_ending,
+        });
         tabsStore.openTab(payload);
         await recentStore.add(payload.path);
+        // Verify the tab was created with content
+        const tab = tabsStore.tabs.find((t) => t.path === payload.path);
+        console.log('[openFile] tab after openTab:', tab ? {
+          id: tab.id,
+          fileName: tab.fileName,
+          content_length: tab.content.length,
+          content_preview: tab.content.slice(0, 100),
+        } : 'NOT FOUND');
       }
     } catch (e: unknown) {
       showToast(`Failed to open file: ${errorMessage(e)}`);
@@ -498,63 +515,118 @@
     void saveRecovery();
     recoveryInterval = setInterval(() => void saveRecovery(), RECOVERY_INTERVAL_MS);
 
-    window.addEventListener('keydown', handleGlobalKeydown);
+    // Keydown listener — on `document` with `capture: true` so it fires before
+    // any focused element can stopPropagation. Handles shortcuts that the
+    // native menu does NOT have an accelerator for (e.g. Ctrl+Tab, F3,
+    // Ctrl+1..9). For shortcuts the menu DOES accelerate, see the Tauri
+    // `listen()` calls below.
+    const keydownListener = (e: KeyboardEvent) => handleGlobalKeydown(e);
+    document.addEventListener('keydown', keydownListener, { capture: true });
 
     const tabCloseHandler: EventListener = (e) => {
       void handleTabCloseRequest(e as CustomEvent<{ tabId: string }>);
     };
     window.addEventListener('tab-close-request', tabCloseHandler);
 
-    const menuHandlers: Array<{ event: string; handler: EventListener }> = [
-      { event: 'menu-new-tab', handler: () => tabsStore.newTab() },
-      { event: 'menu-open-file', handler: () => void handleOpenFile() },
-      { event: 'menu-save', handler: () => void handleSave() },
-      { event: 'menu-save-as', handler: () => void handleSaveAs() },
-      {
-        event: 'menu-close-tab',
-        handler: () => {
-          const tab = tabsStore.activeTab;
-          if (!tab) return;
-          if (tab.content !== tab.savedContent) {
-            void handleTabCloseRequest(new CustomEvent('tab-close', { detail: { tabId: tab.id } }));
-          } else {
-            tabsStore.forceCloseTab(tab.id);
-          }
-        },
-      },
-      { event: 'menu-undo', handler: () => dispatchEditorAction({ action: 'undo' }) },
-      { event: 'menu-redo', handler: () => dispatchEditorAction({ action: 'redo' }) },
-      { event: 'menu-cut', handler: () => dispatchEditorAction({ action: 'cut' }) },
-      { event: 'menu-copy', handler: () => dispatchEditorAction({ action: 'copy' }) },
-      { event: 'menu-paste', handler: () => dispatchEditorAction({ action: 'paste' }) },
-      { event: 'menu-select-all', handler: () => dispatchEditorAction({ action: 'select-all' }) },
-      { event: 'menu-find', handler: () => { showFindReplace = true; } },
-      { event: 'menu-find-replace', handler: () => { showFindReplace = true; } },
-      { event: 'menu-go-to-line', handler: () => { showGoToLine = true; } },
-      { event: 'menu-zoom-in', handler: () => settingsStore.increaseFontSize() },
-      { event: 'menu-zoom-out', handler: () => settingsStore.decreaseFontSize() },
-      { event: 'menu-zoom-reset', handler: () => settingsStore.resetFontSize() },
-      { event: 'menu-word-wrap', handler: () => settingsStore.toggleWordWrap() },
-      { event: 'menu-status-bar', handler: () => settingsStore.toggleStatusBar() },
+    // Tauri menu events (emitted from Rust via window.emit). These are
+    // NOT DOM events — they must be received via listen() from
+    // @tauri-apps/api/event. The previous code used window.addEventListener
+    // which never fired for these.
+    const listen = listenTauriEvent;
+
+    const listenPromises: Array<Promise<UnlistenFn>> = [
+      listen('menu-new-tab', () => tabsStore.newTab()),
+      listen('menu-open', () => void handleOpenFile()), // Native menu "Open..." has id "menu-open"
+      listen('menu-save', () => void handleSave()),
+      listen('menu-save-as', () => void handleSaveAs()),
+      listen('menu-close-tab', () => {
+        const tab = tabsStore.activeTab;
+        if (!tab) return;
+        if (tab.content !== tab.savedContent) {
+          void handleTabCloseRequest(
+            new CustomEvent('tab-close', { detail: { tabId: tab.id } }),
+          );
+        } else {
+          tabsStore.forceCloseTab(tab.id);
+        }
+      }),
+      listen('menu-undo', () => dispatchEditorAction({ action: 'undo' })),
+      listen('menu-redo', () => dispatchEditorAction({ action: 'redo' })),
+      listen('menu-cut', () => dispatchEditorAction({ action: 'cut' })),
+      listen('menu-copy', () => dispatchEditorAction({ action: 'copy' })),
+      listen('menu-paste', () => dispatchEditorAction({ action: 'paste' })),
+      listen('menu-select-all', () => dispatchEditorAction({ action: 'select-all' })),
+      listen('menu-find', () => { showFindReplace = true; }),
+      listen('menu-find-replace', () => { showFindReplace = true; }),
+      listen('menu-go-to-line', () => { showGoToLine = true; }),
+      listen('menu-zoom-in', () => settingsStore.increaseFontSize()),
+      listen('menu-zoom-out', () => settingsStore.decreaseFontSize()),
+      listen('menu-zoom-reset', () => settingsStore.resetFontSize()),
+      listen('menu-word-wrap', () => settingsStore.toggleWordWrap()),
+      listen('menu-status-bar', () => settingsStore.toggleStatusBar()),
+      listen<string>('menu-open-recent', (e) => { void handleOpenRecent(e.payload); }),
+      listen('menu-about', () => {
+        void showConfirmDialog(
+          'About text-rs',
+          'text-rs v0.2.0\nA fast, lightweight text editor.\nBuilt with Tauri, Svelte 5, and CodeMirror 6.',
+          { showDiscard: false, showCancel: false, saveLabel: 'OK' },
+        );
+      }),
     ];
 
-    const menuOpenRecentHandler: EventListener = (e) => {
-      const path = (e as CustomEvent<string>).detail;
-      void handleOpenRecent(path);
+    // TabBar's right-click context menu emits DOM events (not Tauri events).
+    // These are UI-internal, not native menu, so a DOM listener is correct.
+    const contextMenuNewTab = () => tabsStore.newTab();
+    const contextMenuOpenFile = () => void handleOpenFile();
+    const contextMenuSave = () => void handleSave();
+    const contextMenuSaveAs = () => void handleSaveAs();
+    const contextMenuCloseTab = () => {
+      const tab = tabsStore.activeTab;
+      if (!tab) return;
+      if (tab.content !== tab.savedContent) {
+        void handleTabCloseRequest(
+          new CustomEvent('tab-close', { detail: { tabId: tab.id } }),
+        );
+      } else {
+        tabsStore.forceCloseTab(tab.id);
+      }
     };
-    const menuAboutHandler: EventListener = () => {
-      void showConfirmDialog(
-        'About text-rs',
-        'text-rs v0.2.0\nA fast, lightweight text editor.\nBuilt with Tauri, Svelte 5, and CodeMirror 6.',
-        { showDiscard: false, showCancel: false, saveLabel: 'OK' },
-      );
-    };
+    const contextMenuUndo = () => dispatchEditorAction({ action: 'undo' });
+    const contextMenuRedo = () => dispatchEditorAction({ action: 'redo' });
+    const contextMenuCut = () => dispatchEditorAction({ action: 'cut' });
+    const contextMenuCopy = () => dispatchEditorAction({ action: 'copy' });
+    const contextMenuPaste = () => dispatchEditorAction({ action: 'paste' });
+    const contextMenuSelectAll = () => dispatchEditorAction({ action: 'select-all' });
+    const contextMenuFind = () => { showFindReplace = true; };
+    const contextMenuFindReplace = () => { showFindReplace = true; };
+    const contextMenuGoToLine = () => { showGoToLine = true; };
+    const contextMenuZoomIn = () => settingsStore.increaseFontSize();
+    const contextMenuZoomOut = () => settingsStore.decreaseFontSize();
+    const contextMenuZoomReset = () => settingsStore.resetFontSize();
+    const contextMenuWordWrap = () => settingsStore.toggleWordWrap();
+    const contextMenuStatusBar = () => settingsStore.toggleStatusBar();
 
-    menuHandlers.forEach(({ event, handler }) => window.addEventListener(event, handler));
-    window.addEventListener('menu-open-recent', menuOpenRecentHandler);
-    window.addEventListener('menu-about', menuAboutHandler);
+    window.addEventListener('menu-new-tab', contextMenuNewTab);
+    window.addEventListener('menu-open-file', contextMenuOpenFile);
+    window.addEventListener('menu-save', contextMenuSave);
+    window.addEventListener('menu-save-as', contextMenuSaveAs);
+    window.addEventListener('menu-close-tab', contextMenuCloseTab);
+    window.addEventListener('menu-undo', contextMenuUndo);
+    window.addEventListener('menu-redo', contextMenuRedo);
+    window.addEventListener('menu-cut', contextMenuCut);
+    window.addEventListener('menu-copy', contextMenuCopy);
+    window.addEventListener('menu-paste', contextMenuPaste);
+    window.addEventListener('menu-select-all', contextMenuSelectAll);
+    window.addEventListener('menu-find', contextMenuFind);
+    window.addEventListener('menu-find-replace', contextMenuFindReplace);
+    window.addEventListener('menu-go-to-line', contextMenuGoToLine);
+    window.addEventListener('menu-zoom-in', contextMenuZoomIn);
+    window.addEventListener('menu-zoom-out', contextMenuZoomOut);
+    window.addEventListener('menu-zoom-reset', contextMenuZoomReset);
+    window.addEventListener('menu-word-wrap', contextMenuWordWrap);
+    window.addEventListener('menu-status-bar', contextMenuStatusBar);
 
-    // OS file-open events and drag-drop
+    // Tauri file-opened events and drag-drop
     const unlistenFileOpened = getAppWindow().listen<string[]>('file-opened', async (event) => {
       for (const filePath of event.payload) {
         await handleOpenFromPath(filePath);
@@ -571,11 +643,29 @@
     return () => {
       if (toastTimer) clearTimeout(toastTimer);
       if (recoveryInterval) clearInterval(recoveryInterval);
-      window.removeEventListener('keydown', handleGlobalKeydown);
+      document.removeEventListener('keydown', keydownListener, { capture: true });
       window.removeEventListener('tab-close-request', tabCloseHandler);
-      menuHandlers.forEach(({ event, handler }) => window.removeEventListener(event, handler));
-      window.removeEventListener('menu-open-recent', menuOpenRecentHandler);
-      window.removeEventListener('menu-about', menuAboutHandler);
+      // Context menu DOM listeners
+      window.removeEventListener('menu-new-tab', contextMenuNewTab);
+      window.removeEventListener('menu-open-file', contextMenuOpenFile);
+      window.removeEventListener('menu-save', contextMenuSave);
+      window.removeEventListener('menu-save-as', contextMenuSaveAs);
+      window.removeEventListener('menu-close-tab', contextMenuCloseTab);
+      window.removeEventListener('menu-undo', contextMenuUndo);
+      window.removeEventListener('menu-redo', contextMenuRedo);
+      window.removeEventListener('menu-cut', contextMenuCut);
+      window.removeEventListener('menu-copy', contextMenuCopy);
+      window.removeEventListener('menu-paste', contextMenuPaste);
+      window.removeEventListener('menu-select-all', contextMenuSelectAll);
+      window.removeEventListener('menu-find', contextMenuFind);
+      window.removeEventListener('menu-find-replace', contextMenuFindReplace);
+      window.removeEventListener('menu-go-to-line', contextMenuGoToLine);
+      window.removeEventListener('menu-zoom-in', contextMenuZoomIn);
+      window.removeEventListener('menu-zoom-out', contextMenuZoomOut);
+      window.removeEventListener('menu-zoom-reset', contextMenuZoomReset);
+      window.removeEventListener('menu-word-wrap', contextMenuWordWrap);
+      window.removeEventListener('menu-status-bar', contextMenuStatusBar);
+      void Promise.all(listenPromises).then((fns) => fns.forEach((fn) => fn()));
       unlistenFileOpened.then((fn) => fn());
       unlistenDragDrop.then((fn) => fn());
       closeUnlistenPromise.then((fn) => fn());

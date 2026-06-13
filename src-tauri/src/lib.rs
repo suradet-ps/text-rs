@@ -359,8 +359,12 @@ pub fn run() {
             }
 
             let menu = build_menu(app.handle());
-            if let Some(window) = app.get_webview_window("main") {
-                window.set_menu(menu).ok();
+            // Use app.set_menu so the menu is registered with the
+            // application (system menu bar on macOS, window menu on
+            // Windows/Linux). window.set_menu is window-scoped and can
+            // miss some events on macOS.
+            if let Err(e) = app.set_menu(menu) {
+                log::error!("Failed to set menu: {}", e);
             }
 
             log::info!("text-rs started");

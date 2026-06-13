@@ -13,7 +13,10 @@ pub mod macos {
     use objc::runtime::{Class, Object, Sel};
     use objc::{class, msg_send, sel, sel_impl};
 
-    const KEY_DIRECT_OBJECT: u32 = 0x2D646F63;
+    // Four-char code for `keyDirectObject` = '----' = 0x2D2D2D2D.
+    // The previous value (0x2D646F63, "-doc") was wrong and caused
+    // file-open Apple Events to be silently dropped.
+    const KEY_DIRECT_OBJECT: u32 = 0x2D2D2D2D;
 
     /// Capture files from the current Apple Event at startup.
     /// This handles the case where the app was launched with a file (e.g. "Open With" from Finder).
