@@ -78,14 +78,20 @@ fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
 
 #[tauri::command]
 pub async fn open_file(app: tauri::AppHandle) -> Result<Option<FilePayload>, String> {
+    log::info!("[open_file] Starting file dialog...");
     let file_path = tokio::task::spawn_blocking(move || {
-        app.dialog()
+        log::info!("[open_file] Showing native file dialog...");
+        let result = app.dialog()
             .file()
-            .add_filter("All Files", &["*"])
-            .blocking_pick_file()
+            .blocking_pick_file();
+        log::info!("[open_file] Dialog returned: {:?}", result.is_some());
+        result
     })
     .await
-    .map_err(|e| format!("Dialog task failed: {}", e))?;
+    .map_err(|e| {
+        log::error!("[open_file] Dialog task failed: {}", e);
+        format!("Dialog task failed: {}", e)
+    })?;
 
     match file_path {
         Some(path) => {
@@ -93,9 +99,18 @@ pub async fn open_file(app: tauri::AppHandle) -> Result<Option<FilePayload>, Str
                 .into_path()
                 .map_err(|e| format!("Invalid file path: {:?}", e))?;
             let path_str = path_buf.to_string_lossy().to_string();
-            read_file_internal(&path_str).await.map(Some)
+            log::info!("[open_file] Reading file: {}", path_str);
+            let result = read_file_internal(&path_str).await;
+            match &result {
+                Ok(_) => log::info!("[open_file] File read successfully"),
+                Err(e) => log::error!("[open_file] Failed to read: {}", e),
+            }
+            result.map(Some)
         }
-        None => Ok(None),
+        None => {
+            log::info!("[open_file] User cancelled dialog");
+            Ok(None)
+        }
     }
 }
 
@@ -190,8 +205,7 @@ pub async fn save_file_as(
             .add_filter("Text Files", &["txt", "md", "log", "csv", "tsv", "ini", "cfg", "conf", "env", "rst"])
             .add_filter("Source Code", &["rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyw", "go", "rb", "java", "c", "cpp", "cc", "h", "hpp", "php", "sh", "bash", "zsh", "fish"])
             .add_filter("Web Files", &["html", "htm", "css", "scss", "less", "svg"])
-            .add_filter("Data Files", &["json", "jsonc", "xml", "toml", "yaml", "yml", "sql", "graphql", "gql"])
-            .add_filter("All Files", &["*"]);
+            .add_filter("Data Files", &["json", "jsonc", "xml", "toml", "yaml", "yml", "sql", "graphql", "gql"]);
         dialog.blocking_save_file()
     })
     .await

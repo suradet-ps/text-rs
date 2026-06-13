@@ -39,9 +39,19 @@ echo "=== Step 1: Patching Info.plist ==="
 /usr/libexec/PlistBuddy -c "Add :NSDownloadsFolderUsageDescription string 'text-rs needs access to your Downloads folder to open and save files.'" "$INFO_PLIST" 2>/dev/null || true
 echo "Info.plist updated."
 
-echo "=== Step 2: Ad-hoc code signing ==="
-codesign --force --deep --sign - "$APP_BUNDLE"
-echo "Signed: $APP_BUNDLE"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENTITLEMENTS="$PROJECT_ROOT/src-tauri/entitlements.plist"
+
+echo "=== Step 2: Ad-hoc code signing with entitlements ==="
+if [ -f "$ENTITLEMENTS" ]; then
+  codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_BUNDLE"
+  echo "Signed with entitlements: $APP_BUNDLE"
+else
+  echo "Warning: entitlements.plist not found at $ENTITLEMENTS"
+  codesign --force --deep --sign - "$APP_BUNDLE"
+  echo "Signed without entitlements: $APP_BUNDLE"
+fi
 
 echo "=== Step 3: Verifying signature ==="
 codesign --verify --verbose=2 "$APP_BUNDLE" 2>&1 || echo "Warning: verification returned warnings (expected for ad-hoc)"
