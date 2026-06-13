@@ -421,6 +421,12 @@
       if (idx < tabsStore.tabs.length) {
         tabsStore.setActive(tabsStore.tabs[idx].id);
       }
+    } else if (mod && e.key === 'q') {
+      // Cmd/Ctrl+Q — quit application. On macOS the OS usually reserves
+      // this, but a custom handler here ensures the close-interceptor
+      // (which checks for dirty tabs) runs.
+      e.preventDefault();
+      void handleCloseRequest();
     }
   }
 

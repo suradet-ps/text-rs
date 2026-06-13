@@ -33,6 +33,14 @@ fn init_logging(app_data_dir: &std::path::Path) {
 }
 
 fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
+    // Keyboard accelerators are NOT set on menu items on purpose.
+    // On macOS, a registered accelerator makes the OS consume the key
+    // event, so the renderer's keydown handler never sees it. Because
+    // Tauri events emitted from menu clicks are also subject to
+    // cross-platform reliability issues, we handle ALL keyboard
+    // shortcuts via a document-level keydown handler in
+    // src/routes/+page.svelte. The menu items still emit Tauri events
+    // when clicked (so the user can drive the app from the menu bar).
     let open_recent = SubmenuBuilder::new(app, "Open Recent")
         .item(
             &MenuItemBuilder::new("(No Recent Files)")
@@ -47,14 +55,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("New Tab")
                 .id("menu-new-tab")
-                .accelerator("CmdOrCtrl+N")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Open...")
                 .id("menu-open")
-                .accelerator("CmdOrCtrl+O")
                 .build(app)
                 .unwrap(),
         )
@@ -63,14 +69,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Save")
                 .id("menu-save")
-                .accelerator("CmdOrCtrl+S")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Save As...")
                 .id("menu-save-as")
-                .accelerator("CmdOrCtrl+Shift+S")
                 .build(app)
                 .unwrap(),
         )
@@ -78,7 +82,6 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Close Tab")
                 .id("menu-close-tab")
-                .accelerator("CmdOrCtrl+W")
                 .build(app)
                 .unwrap(),
         )
@@ -91,14 +94,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Undo")
                 .id("menu-undo")
-                .accelerator("CmdOrCtrl+Z")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Redo")
                 .id("menu-redo")
-                .accelerator("CmdOrCtrl+Shift+Z")
                 .build(app)
                 .unwrap(),
         )
@@ -106,28 +107,24 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Cut")
                 .id("menu-cut")
-                .accelerator("CmdOrCtrl+X")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Copy")
                 .id("menu-copy")
-                .accelerator("CmdOrCtrl+C")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Paste")
                 .id("menu-paste")
-                .accelerator("CmdOrCtrl+V")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Select All")
                 .id("menu-select-all")
-                .accelerator("CmdOrCtrl+A")
                 .build(app)
                 .unwrap(),
         )
@@ -135,21 +132,18 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Find...")
                 .id("menu-find")
-                .accelerator("CmdOrCtrl+F")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Find & Replace...")
                 .id("menu-find-replace")
-                .accelerator("CmdOrCtrl+H")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Go to Line...")
                 .id("menu-go-to-line")
-                .accelerator("CmdOrCtrl+G")
                 .build(app)
                 .unwrap(),
         )
@@ -158,7 +152,6 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
 
     let word_wrap_item = CheckMenuItemBuilder::new("Word Wrap")
         .id("menu-word-wrap")
-        .accelerator("Alt+Z")
         .build(app)
         .unwrap();
 
@@ -174,21 +167,18 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
         .item(
             &MenuItemBuilder::new("Zoom In")
                 .id("menu-zoom-in")
-                .accelerator("CmdOrCtrl+=")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Zoom Out")
                 .id("menu-zoom-out")
-                .accelerator("CmdOrCtrl+-")
                 .build(app)
                 .unwrap(),
         )
         .item(
             &MenuItemBuilder::new("Reset Zoom")
                 .id("menu-zoom-reset")
-                .accelerator("CmdOrCtrl+0")
                 .build(app)
                 .unwrap(),
         )
@@ -223,73 +213,78 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
 
 fn handle_menu_event(app: &tauri::AppHandle, menu_id: &str) {
     use tauri::Emitter;
-    if let Some(window) = app.get_webview_window("main") {
-        match menu_id {
-            "menu-new-tab" => {
-                window.emit("menu-new-tab", ()).ok();
-            }
-            "menu-open" => {
-                window.emit("menu-open-file", ()).ok();
-            }
-            "menu-save" => {
-                window.emit("menu-save", ()).ok();
-            }
-            "menu-save-as" => {
-                window.emit("menu-save-as", ()).ok();
-            }
-            "menu-close-tab" => {
-                window.emit("menu-close-tab", ()).ok();
-            }
-            "menu-undo" => {
-                window.emit("menu-undo", ()).ok();
-            }
-            "menu-redo" => {
-                window.emit("menu-redo", ()).ok();
-            }
-            "menu-cut" => {
-                window.emit("menu-cut", ()).ok();
-            }
-            "menu-copy" => {
-                window.emit("menu-copy", ()).ok();
-            }
-            "menu-paste" => {
-                window.emit("menu-paste", ()).ok();
-            }
-            "menu-select-all" => {
-                window.emit("menu-select-all", ()).ok();
-            }
-            "menu-find" => {
-                window.emit("menu-find", ()).ok();
-            }
-            "menu-find-replace" => {
-                window.emit("menu-find-replace", ()).ok();
-            }
-            "menu-go-to-line" => {
-                window.emit("menu-go-to-line", ()).ok();
-            }
-            "menu-zoom-in" => {
-                window.emit("menu-zoom-in", ()).ok();
-            }
-            "menu-zoom-out" => {
-                window.emit("menu-zoom-out", ()).ok();
-            }
-            "menu-zoom-reset" => {
-                window.emit("menu-zoom-reset", ()).ok();
-            }
-            "menu-word-wrap" => {
-                window.emit("menu-word-wrap", ()).ok();
-            }
-            "menu-status-bar" => {
-                window.emit("menu-status-bar", ()).ok();
-            }
-            "menu-about" => {
-                window.emit("menu-about", ()).ok();
-            }
-            id if id.starts_with("recent-") => {
-                let path = id.strip_prefix("recent-").unwrap_or("");
-                window.emit("menu-open-recent", path.to_string()).ok();
-            }
-            _ => {}
+    log::info!("[menu] event fired: {}", menu_id);
+    let Some(window) = app.get_webview_window("main") else {
+        log::error!("[menu] main window not found");
+        return;
+    };
+    match menu_id {
+        "menu-new-tab" => {
+            window.emit("menu-new-tab", ()).ok();
+        }
+        "menu-open" => {
+            window.emit("menu-open", ()).ok();
+        }
+        "menu-save" => {
+            window.emit("menu-save", ()).ok();
+        }
+        "menu-save-as" => {
+            window.emit("menu-save-as", ()).ok();
+        }
+        "menu-close-tab" => {
+            window.emit("menu-close-tab", ()).ok();
+        }
+        "menu-undo" => {
+            window.emit("menu-undo", ()).ok();
+        }
+        "menu-redo" => {
+            window.emit("menu-redo", ()).ok();
+        }
+        "menu-cut" => {
+            window.emit("menu-cut", ()).ok();
+        }
+        "menu-copy" => {
+            window.emit("menu-copy", ()).ok();
+        }
+        "menu-paste" => {
+            window.emit("menu-paste", ()).ok();
+        }
+        "menu-select-all" => {
+            window.emit("menu-select-all", ()).ok();
+        }
+        "menu-find" => {
+            window.emit("menu-find", ()).ok();
+        }
+        "menu-find-replace" => {
+            window.emit("menu-find-replace", ()).ok();
+        }
+        "menu-go-to-line" => {
+            window.emit("menu-go-to-line", ()).ok();
+        }
+        "menu-zoom-in" => {
+            window.emit("menu-zoom-in", ()).ok();
+        }
+        "menu-zoom-out" => {
+            window.emit("menu-zoom-out", ()).ok();
+        }
+        "menu-zoom-reset" => {
+            window.emit("menu-zoom-reset", ()).ok();
+        }
+        "menu-word-wrap" => {
+            window.emit("menu-word-wrap", ()).ok();
+        }
+        "menu-status-bar" => {
+            window.emit("menu-status-bar", ()).ok();
+        }
+        "menu-about" => {
+            window.emit("menu-about", ()).ok();
+        }
+        id if id.starts_with("recent-") => {
+            let path = id.strip_prefix("recent-").unwrap_or("");
+            window.emit("menu-open-recent", path.to_string()).ok();
+        }
+        _ => {
+            log::warn!("[menu] unhandled id: {}", menu_id);
         }
     }
 }
@@ -363,8 +358,9 @@ pub fn run() {
             // application (system menu bar on macOS, window menu on
             // Windows/Linux). window.set_menu is window-scoped and can
             // miss some events on macOS.
-            if let Err(e) = app.set_menu(menu) {
-                log::error!("Failed to set menu: {}", e);
+            match app.set_menu(menu) {
+                Ok(_) => log::info!("[menu] application menu set successfully"),
+                Err(e) => log::error!("[menu] failed to set menu: {}", e),
             }
 
             log::info!("text-rs started");

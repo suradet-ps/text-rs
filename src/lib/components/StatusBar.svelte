@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tabsStore } from '$lib/stores/tabs.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
+  import { requestIdleCallbackShim, cancelIdleCallbackShim } from '$lib/utils/idle';
 
   let line = $derived(tabsStore.activeTab?.cursorLine ?? 1);
   let col = $derived(tabsStore.activeTab?.cursorCol ?? 1);
@@ -17,19 +18,24 @@
   $effect(() => {
     const c = content;
     if (pendingIdle !== null) {
-      cancelIdleCallback(pendingIdle);
+      cancelIdleCallbackShim(pendingIdle);
     }
-    pendingIdle = requestIdleCallback(
-      () => {
-        wordCount = c ? c.split(/\s+/).filter(Boolean).length : 0;
-        pendingIdle = null;
-      },
-      { timeout: 500 },
-    );
+    try {
+      pendingIdle = requestIdleCallbackShim(
+        () => {
+          wordCount = c ? c.split(/\s+/).filter(Boolean).length : 0;
+          pendingIdle = null;
+        },
+        { timeout: 500 },
+      );
+    } catch {
+      // Fallback: compute synchronously if idle callbacks are unavailable
+      wordCount = c ? c.split(/\s+/).filter(Boolean).length : 0;
+    }
   });
   $effect(() => {
     return () => {
-      if (pendingIdle !== null) cancelIdleCallback(pendingIdle);
+      if (pendingIdle !== null) cancelIdleCallbackShim(pendingIdle);
     };
   });
 
