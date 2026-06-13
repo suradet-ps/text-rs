@@ -1,6 +1,6 @@
 /**
- * Ensures a file path has an extension. If the filename (excluding leading dots)
- * contains no dot, appends `defaultExt`.
+ * Ensures a file path has an extension. If the filename is a hidden file
+ * (starts with a dot) or already has an extension, it is returned as-is.
  *
  * Examples:
  *   ensureExtension('/Users/me/my_note')         → '/Users/me/my_note.txt'
@@ -14,8 +14,11 @@ export function ensureExtension(filePath: string, defaultExt: string = 'txt'): s
 
   if (!filename) return filePath;
 
-  const nameWithoutLeadingDots = filename.replace(/^\.+/, '');
-  if (!nameWithoutLeadingDots.includes('.')) {
+  // Hidden files (starting with a dot) are kept as-is
+  if (filename.startsWith('.')) return filePath;
+
+  const visible = filename.replace(/^\.+/, '');
+  if (!visible.includes('.')) {
     return `${filePath}.${defaultExt}`;
   }
   return filePath;

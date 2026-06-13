@@ -44,7 +44,13 @@ pub async fn check_recovery_data(
         .await
         .map_err(|e| format!("Failed to read recovery data: {}", e))?;
 
-    let entries: Vec<RecoveryEntry> = serde_json::from_str(&json).unwrap_or_default();
+    let entries: Vec<RecoveryEntry> = match serde_json::from_str(&json) {
+        Ok(e) => e,
+        Err(err) => {
+            log::warn!("[check_recovery_data] parse error: {}", err);
+            return Ok(None);
+        }
+    };
     if entries.is_empty() {
         return Ok(None);
     }
@@ -67,10 +73,4 @@ pub async fn clear_recovery_data(app: tauri::AppHandle) -> Result<(), String> {
     entries.clear();
 
     Ok(())
-}
-
-#[tauri::command]
-pub async fn get_app_data_dir(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    Ok(dir.to_string_lossy().to_string())
 }

@@ -1,3 +1,5 @@
+import { detectLanguage } from '$lib/utils/detect-lang';
+
 export interface Tab {
   id: string;
   path: string | null;
@@ -12,24 +14,71 @@ export interface Tab {
   scrollTop: number;
 }
 
+/**
+ * Frontend shape that matches the Rust `FilePayload` struct.
+ * `path` is non-null in normal file payloads; recovery payloads may pass null.
+ */
 export interface FilePayload {
   path: string;
   content: string;
   file_name: string;
-  encoding?: string;
-  line_ending?: string;
+  encoding: string;
+  line_ending: string;
 }
 
 let _tabs = $state<Tab[]>([]);
 let _activeTabId = $state<string | null>(null);
 let _untitledCounter = $state(0);
 
+function extractFileName(path: string): string {
+  return path.split('/').pop() || path.split('\\').pop() || path;
+}
+
+/** Internal: copy-on-write update of a single tab. Allocates exactly 1 array + 1 tab. */
+function mutateTab(id: string, patch: (t: Tab) => Tab): void {
+  const idx = _tabs.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  const next = _tabs.slice();
+  next[idx] = patch(_tabs[idx]);
+  _tabs = next;
+}
+
+function ensureOneTab(): void {
+  if (_tabs.length > 0) return;
+  _untitledCounter++;
+  const tab: Tab = {
+    id: crypto.randomUUID(),
+    path: null,
+    fileName: `untitled-${_untitledCounter}`,
+    content: '',
+    savedContent: '',
+    language: 'text',
+    encoding: 'UTF-8',
+    lineEnding: 'LF',
+    cursorLine: 1,
+    cursorCol: 1,
+    scrollTop: 0,
+  };
+  _tabs = [tab];
+  _activeTabId = tab.id;
+}
+
+function setActiveAfterRemoval(removedId: string, removedIdx: number): void {
+  if (_activeTabId !== removedId) return;
+  _activeTabId =
+    _tabs.length > 0 ? _tabs[Math.min(removedIdx, _tabs.length - 1)].id : null;
+}
+
 export const tabsStore = {
-  get tabs() { return _tabs; },
-  get activeTabId() { return _activeTabId; },
+  get tabs() {
+    return _tabs;
+  },
+  get activeTabId() {
+    return _activeTabId;
+  },
 
   get activeTab(): Tab | undefined {
-    return _tabs.find(t => t.id === _activeTabId);
+    return _tabs.find((t) => t.id === _activeTabId);
   },
 
   newTab(): Tab {
@@ -53,14 +102,18 @@ export const tabsStore = {
   },
 
   openTab(payload: FilePayload): Tab {
-    const existing = _tabs.find(t => t.path === payload.path);
+    const existing = _tabs.find((t) => t.path === payload.path);
     if (existing) {
       _activeTabId = existing.id;
       return existing;
     }
 
-    // If there's only one empty untitled tab, replace it
-    if (_tabs.length === 1 && _tabs[0].path === null && _tabs[0].content === '') {
+    // Replace single empty untitled tab to avoid an unused tab after open
+    if (
+      _tabs.length === 1 &&
+      _tabs[0].path === null &&
+      _tabs[0].content === ''
+    ) {
       _tabs = [];
     }
 
@@ -71,8 +124,8 @@ export const tabsStore = {
       content: payload.content,
       savedContent: payload.content,
       language: detectLanguage(payload.path),
-      encoding: payload.encoding ?? 'UTF-8',
-      lineEnding: payload.line_ending ?? 'LF',
+      encoding: payload.encoding,
+      lineEnding: payload.line_ending,
       cursorLine: 1,
       cursorCol: 1,
       scrollTop: 0,
@@ -83,108 +136,77 @@ export const tabsStore = {
   },
 
   closeTab(id: string): boolean {
-    const idx = _tabs.findIndex(t => t.id === id);
+    const idx = _tabs.findIndex((t) => t.id === id);
     if (idx === -1) return false;
-    const tab = _tabs[idx];
-    if (tab.content !== tab.savedContent) return false;
+    if (_tabs[idx].content !== _tabs[idx].savedContent) return false;
 
-    _tabs = _tabs.filter(t => t.id !== id);
-    if (_activeTabId === id) {
-      _activeTabId = _tabs.length > 0 ? _tabs[Math.min(idx, _tabs.length - 1)].id : null;
-    }
-    // Ensure at least one tab exists
-    if (_tabs.length === 0) {
-      this.newTab();
-    }
+    _tabs = _tabs.filter((t) => t.id !== id);
+    setActiveAfterRemoval(id, idx);
+    ensureOneTab();
     return true;
   },
 
-  forceCloseTab(id: string) {
-    const idx = _tabs.findIndex(t => t.id === id);
+  forceCloseTab(id: string): void {
+    const idx = _tabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
-    _tabs = _tabs.filter(t => t.id !== id);
-    if (_activeTabId === id) {
-      _activeTabId = _tabs.length > 0 ? _tabs[Math.min(idx, _tabs.length - 1)].id : null;
-    }
-    // Ensure at least one tab exists
-    if (_tabs.length === 0) {
-      _untitledCounter++;
-      const tab: Tab = {
-        id: crypto.randomUUID(),
-        path: null,
-        fileName: `untitled-${_untitledCounter}`,
-        content: '',
-        savedContent: '',
-        language: 'text',
-        encoding: 'UTF-8',
-        lineEnding: 'LF',
-        cursorLine: 1,
-        cursorCol: 1,
-        scrollTop: 0,
-      };
-      _tabs = [..._tabs, tab];
-      _activeTabId = tab.id;
+    _tabs = _tabs.filter((t) => t.id !== id);
+    setActiveAfterRemoval(id, idx);
+    ensureOneTab();
+  },
+
+  setActive(id: string): void {
+    if (_tabs.some((t) => t.id === id)) {
+      _activeTabId = id;
     }
   },
 
-  setActive(id: string) {
-    _activeTabId = id;
+  updateContent(id: string, content: string): void {
+    mutateTab(id, (t) => ({ ...t, content }));
   },
 
-  updateContent(id: string, content: string) {
-    _tabs = _tabs.map(t => t.id === id ? { ...t, content } : t);
+  markSaved(id: string, path: string): void {
+    mutateTab(id, (t) => ({
+      ...t,
+      savedContent: t.content,
+      path,
+      fileName: extractFileName(path),
+      language: detectLanguage(path),
+    }));
   },
 
-  markSaved(id: string, path: string) {
-    const tab = _tabs.find(t => t.id === id);
-    if (tab) {
-      _tabs = _tabs.map(t => t.id === id ? {
-        ...t,
-        savedContent: t.content,
-        path,
-        fileName: path.split('/').pop() || path.split('\\').pop() || t.fileName,
-        language: detectLanguage(path),
-      } : t);
+  renameTab(id: string, newName: string): void {
+    mutateTab(id, (t) => ({ ...t, fileName: newName }));
+  },
+
+  updateCursor(id: string, line: number, col: number): void {
+    mutateTab(id, (t) => ({ ...t, cursorLine: line, cursorCol: col }));
+  },
+
+  setLanguage(id: string, language: string): void {
+    mutateTab(id, (t) => ({ ...t, language }));
+  },
+
+  reorder(fromIdx: number, toIdx: number): void {
+    if (
+      fromIdx < 0 ||
+      toIdx < 0 ||
+      fromIdx >= _tabs.length ||
+      toIdx >= _tabs.length ||
+      fromIdx === toIdx
+    ) {
+      return;
     }
-  },
-
-  renameTab(id: string, newName: string) {
-    _tabs = _tabs.map(t => t.id === id ? { ...t, fileName: newName } : t);
-  },
-
-  updateCursor(id: string, line: number, col: number) {
-    _tabs = _tabs.map(t => t.id === id ? { ...t, cursorLine: line, cursorCol: col } : t);
-  },
-
-  setLanguage(id: string, language: string) {
-    _tabs = _tabs.map(t => t.id === id ? { ...t, language } : t);
-  },
-
-  updateScrollTop(id: string, scrollTop: number) {
-    _tabs = _tabs.map(t => t.id === id ? { ...t, scrollTop } : t);
-  },
-
-  reorder(fromIdx: number, toIdx: number) {
-    const tabs = [..._tabs];
-    const [moved] = tabs.splice(fromIdx, 1);
-    tabs.splice(toIdx, 0, moved);
-    _tabs = tabs;
+    const next = _tabs.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    _tabs = next;
   },
 
   getDirtyTabs(): Tab[] {
-    return _tabs.filter(t => t.content !== t.savedContent);
+    return _tabs.filter((t) => t.content !== t.savedContent);
   },
 
   hasDirtyTabs(): boolean {
-    return _tabs.some(t => t.content !== t.savedContent);
+    return _tabs.some((t) => t.content !== t.savedContent);
   },
-
-  closeAll() {
-    if (this.hasDirtyTabs()) return;
-    _tabs = [];
-    _activeTabId = null;
-  }
 };
-
-import { detectLanguage } from '$lib/utils/detect-lang';
-

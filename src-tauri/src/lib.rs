@@ -13,14 +13,23 @@ use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBui
 
 fn init_logging(app_data_dir: &std::path::Path) {
     let log_dir = app_data_dir.join("logs");
-    let _ = std::fs::create_dir_all(&log_dir);
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("text-rs: failed to create log dir {:?}: {}", log_dir, e);
+        return;
+    }
     let log_file = log_dir.join("text-rs.log");
-
-    let _ = simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
-        simplelog::LevelFilter::Info,
-        simplelog::Config::default(),
-        std::fs::File::create(&log_file).unwrap_or(std::fs::File::create("/dev/null").unwrap()),
-    )]);
+    match std::fs::File::create(&log_file) {
+        Ok(file) => {
+            let _ = simplelog::CombinedLogger::init(vec![simplelog::WriteLogger::new(
+                simplelog::LevelFilter::Info,
+                simplelog::Config::default(),
+                file,
+            )]);
+        }
+        Err(e) => {
+            eprintln!("text-rs: failed to open log file {:?}: {}", log_file, e);
+        }
+    }
 }
 
 fn build_menu(app: &tauri::AppHandle) -> tauri::menu::Menu<tauri::Wry> {
@@ -295,7 +304,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::file::open_file,
             commands::file::read_file,
-            commands::file::read_file_with_encoding,
             commands::file::save_file,
             commands::file::save_file_as,
             commands::file::add_recent_file,
@@ -307,18 +315,24 @@ pub fn run() {
             commands::recovery::save_recovery_data,
             commands::recovery::check_recovery_data,
             commands::recovery::clear_recovery_data,
-            commands::recovery::get_app_data_dir,
         ])
         .setup(|app| {
             let (pending, pending_arc) = PendingFilesState::new();
-            if let Ok(dir) = app.path().app_data_dir() {
-                init_logging(&dir);
 
-                let recovery_dir = dir.join("recovery");
-                app.manage(RecoveryState::new(recovery_dir));
+            // app_data_dir is required for logging, recovery, and recent-files
+            // state. If it fails, we abort startup with a clear error rather
+            // than registering a half-initialized state.
+            let dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to resolve app_data_dir: {}", e))?;
 
-                app.manage(RecentFilesState::new(dir));
-            }
+            init_logging(&dir);
+
+            let recovery_dir = dir.join("recovery");
+            app.manage(RecoveryState::new(recovery_dir));
+
+            app.manage(RecentFilesState::new(dir));
 
             // Capture file paths passed as command-line args (macOS "Open With" / drag-to-icon)
             {
@@ -326,7 +340,6 @@ pub fn run() {
                 let file_args: Vec<String> = args
                     .iter()
                     .filter(|a| !a.starts_with('-'))
-                    .filter(|a| std::path::Path::new(a).exists())
                     .cloned()
                     .collect();
                 if !file_args.is_empty() {

@@ -1,7 +1,16 @@
 use encoding_rs::Encoding;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use tauri_plugin_dialog::DialogExt;
+use tempfile::NamedTempFile;
+
+/// Hard cap on file size. Above this, refuse to open.
+pub const HARD_LIMIT_BYTES: u64 = 200 * 1024 * 1024; // 200 MB
+/// Soft cap: frontend prompts the user to confirm before opening.
+pub const SOFT_LIMIT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+/// Number of bytes to inspect for binary detection.
+const BINARY_PROBE_BYTES: usize = 8192;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilePayload {
@@ -12,8 +21,39 @@ pub struct FilePayload {
     pub line_ending: String,
 }
 
+/// Validate that the path is absolute, exists, and is a regular file.
+/// Canonicalizes the path to prevent symlink-based escapes.
+pub fn validate_path(path_str: &str) -> Result<PathBuf, String> {
+    if path_str.is_empty() {
+        return Err("Path is empty".to_string());
+    }
+    let pb = PathBuf::from(path_str);
+    if !pb.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+    let canonical = std::fs::canonicalize(&pb).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "File not found".to_string()
+        } else {
+            format!("Invalid file path: {}", e)
+        }
+    })?;
+    let meta = std::fs::metadata(&canonical).map_err(|e| format!("Failed to stat path: {}", e))?;
+    if !meta.is_file() {
+        return Err("Path is not a regular file".to_string());
+    }
+    Ok(canonical)
+}
+
 fn detect_encoding(bytes: &[u8]) -> &'static Encoding {
     if bytes.is_empty() {
+        return encoding_rs::UTF_8;
+    }
+    // Fast path: BOM or valid UTF-8
+    if bytes.starts_with(b"\xEF\xBB\xBF") {
+        return encoding_rs::UTF_8;
+    }
+    if std::str::from_utf8(bytes).is_ok() {
         return encoding_rs::UTF_8;
     }
     let (enc, _confidence, _has_bom) = chardet::detect(bytes);
@@ -39,6 +79,11 @@ fn detect_line_ending(content: &str) -> &'static str {
     }
 }
 
+fn is_binary(bytes: &[u8]) -> bool {
+    let probe_end = bytes.len().min(BINARY_PROBE_BYTES);
+    bytes[..probe_end].contains(&0)
+}
+
 fn ensure_extension(path_str: &str, default_ext: &str) -> String {
     let path = PathBuf::from(path_str);
     let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -51,8 +96,13 @@ fn ensure_extension(path_str: &str, default_ext: &str) -> String {
         return path_str.to_string();
     }
 
-    let name_without_leading_dots = file_name.trim_start_matches('.');
-    if !name_without_leading_dots.contains('.') {
+    // Hidden files (starting with a dot, e.g. ".env") are kept as-is
+    if file_name.starts_with('.') {
+        return path_str.to_string();
+    }
+
+    let visible = file_name.trim_start_matches('.');
+    if !visible.contains('.') {
         let new_name = format!("{}.{}", file_name, default_ext);
         return parent.join(new_name).to_string_lossy().to_string();
     }
@@ -61,9 +111,9 @@ fn ensure_extension(path_str: &str, default_ext: &str) -> String {
 }
 
 fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
-    let normalized = match line_ending {
-        "CRLF" => content.replace('\n', "\r\n").replace("\r\r\n", "\r\n"),
-        "CR" => content.replace('\n', "\r"),
+    let normalized: String = match line_ending {
+        "CRLF" => normalize_line_endings(content, "\r\n"),
+        "CR" => normalize_line_endings(content, "\r"),
         _ => content.to_string(),
     };
     let enc: &'static Encoding = match encoding {
@@ -74,6 +124,24 @@ fn encode_content(content: &str, line_ending: &str, encoding: &str) -> Vec<u8> {
     };
     let (encoded, _enc, _had_error) = enc.encode(&normalized);
     encoded.to_vec()
+}
+
+fn normalize_line_endings(s: &str, target: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, chars.peek().copied()) {
+            ('\r', Some('\n')) => {
+                out.push_str(target);
+                chars.next();
+            }
+            ('\r', _) | ('\n', _) => {
+                out.push_str(target);
+            }
+            (c, _) => out.push(c),
+        }
+    }
+    out
 }
 
 #[tauri::command]
@@ -118,31 +186,50 @@ pub async fn read_file(path: String) -> Result<FilePayload, String> {
 }
 
 async fn read_file_internal(path: &str) -> Result<FilePayload, String> {
-    let bytes = tokio::fs::read(path)
+    let canonical = validate_path(path)?;
+
+    let metadata = tokio::fs::metadata(&canonical)
+        .await
+        .map_err(|e| format!("Failed to stat file: {}", e))?;
+    let size = metadata.len();
+    if size > HARD_LIMIT_BYTES {
+        return Err(format!(
+            "File too large: {:.1} MB (limit: {:.0} MB)",
+            size as f64 / 1_048_576.0,
+            HARD_LIMIT_BYTES as f64 / 1_048_576.0,
+        ));
+    }
+    if size > SOFT_LIMIT_BYTES {
+        log::warn!(
+            "[read_file] Opening large file: {:.1} MB",
+            size as f64 / 1_048_576.0
+        );
+    }
+
+    let bytes = tokio::fs::read(&canonical)
         .await
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
+    if is_binary(&bytes) {
+        return Err("Refusing to open: file appears to be binary".to_string());
+    }
+
     let encoding = detect_encoding(&bytes);
     let encoding_name = encoding.name().to_string();
-    let (content, _enc, _had_error) = encoding.decode(&bytes);
-    let line_ending = detect_line_ending(&content);
-    let file_name = PathBuf::from(path)
+    let (content, _enc, _had_errors) = encoding.decode(&bytes);
+    let line_ending = detect_line_ending(&content).to_string();
+    let file_name = canonical
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "untitled".to_string());
 
     Ok(FilePayload {
-        path: path.to_string(),
+        path: canonical.to_string_lossy().to_string(),
         content: content.to_string(),
         file_name,
         encoding: encoding_name,
-        line_ending: line_ending.to_string(),
+        line_ending,
     })
-}
-
-#[tauri::command]
-pub async fn read_file_with_encoding(path: String) -> Result<FilePayload, String> {
-    read_file_internal(&path).await
 }
 
 #[tauri::command]
@@ -156,34 +243,18 @@ pub async fn save_file(
     let enc = encoding.unwrap_or_else(|| "UTF-8".to_string());
 
     let p = PathBuf::from(&path);
-    let parent = p.parent().ok_or("Invalid file path")?;
-    let stem = p.file_stem().ok_or("Invalid file path")?;
-    let ext = p
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    let temp_name = format!(
-        ".{}~{:x}{}",
-        stem.to_string_lossy(),
-        std::process::id(),
-        ext
-    );
-    let temp_path = parent.join(&temp_name);
+    if !p.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+    if let Some(parent) = p.parent()
+        && !parent.as_os_str().is_empty()
+        && !Path::new(parent).exists()
+    {
+        return Err("Parent directory does not exist".to_string());
+    }
 
     let data = encode_content(&content, &le, &enc);
-    tokio::fs::write(&temp_path, &data).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            "Permission denied: the file is read-only. Save a copy instead?".to_string()
-        } else {
-            format!("Failed to save file: {}", e)
-        }
-    })?;
-
-    tokio::fs::rename(&temp_path, &path)
-        .await
-        .map_err(|e| format!("Failed to finalize save: {}", e))?;
-
-    Ok(())
+    write_atomic(&p, &data).await
 }
 
 #[tauri::command]
@@ -235,25 +306,79 @@ pub async fn save_file_as(
             let le = line_ending.unwrap_or_else(|| "LF".to_string());
             let enc = encoding.unwrap_or_else(|| "UTF-8".to_string());
             let data = encode_content(&content, &le, &enc);
-            tokio::fs::write(&path_str, &data).await.map_err(|e| {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    "Permission denied: the file is read-only. Save a copy instead?".to_string()
-                } else {
-                    format!("Failed to save file: {}", e)
-                }
-            })?;
+            let p = PathBuf::from(&path_str);
+            write_atomic(&p, &data).await?;
             Ok(Some(path_str))
         }
         None => Ok(None),
     }
 }
 
-#[tauri::command]
-pub async fn check_file_size(path: String) -> Result<u64, String> {
-    let metadata = tokio::fs::metadata(&path)
+/// Atomic write: write to a uniquely-named temp file in the same directory,
+/// fsync, then rename over the target. Falls back to copy+delete on
+/// cross-filesystem rename (EXDEV).
+async fn write_atomic(target: &Path, data: &[u8]) -> Result<(), String> {
+    let parent = target
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let target_buf = target.to_path_buf();
+    let parent_for_task = parent.clone();
+    let data_vec = data.to_vec();
+
+    let persist_outcome =
+        tokio::task::spawn_blocking(move || -> Result<(), (PathBuf, std::io::Error)> {
+            let mut temp = NamedTempFile::new_in(&parent_for_task)
+                .map_err(|e| (parent_for_task.clone(), e))?;
+            temp.as_file_mut()
+                .write_all(&data_vec)
+                .map_err(|e| (temp.path().to_path_buf(), e))?;
+            temp.as_file_mut()
+                .sync_all()
+                .map_err(|e| (temp.path().to_path_buf(), e))?;
+            match temp.persist(&target_buf) {
+                Ok(_) => Ok(()),
+                Err(persist_err) => {
+                    let src_path = persist_err.file.path().to_path_buf();
+                    Err((src_path, persist_err.error))
+                }
+            }
+        })
         .await
-        .map_err(|e| format!("Failed to check file: {}", e))?;
-    Ok(metadata.len())
+        .map_err(|e| format!("Failed to save file task: {}", e))?;
+
+    match persist_outcome {
+        Ok(()) => Ok(()),
+        Err((_, e)) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err("Permission denied: the file is read-only. Save a copy instead?".to_string())
+        }
+        Err((src, e)) => {
+            // EXDEV or other cross-FS rename failure: fall back to copy+delete.
+            log::warn!(
+                "[write_atomic] persist failed ({}), falling back to copy+delete",
+                e
+            );
+            let target_for_copy = target.to_path_buf();
+            tokio::fs::copy(&src, &target_for_copy)
+                .await
+                .map_err(|e2| format!("Failed to save (rename: {}, copy: {})", e, e2))?;
+            let _ = tokio::fs::remove_file(&src).await;
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn check_file_size(path: String) -> Result<String, String> {
+    // Returns decimal string to avoid JS Number precision loss on files > 2^53
+    let canonical = validate_path(&path)?;
+    let len = tokio::fs::metadata(&canonical)
+        .await
+        .map_err(|e| format!("Failed to check file: {}", e))?
+        .len();
+    Ok(len.to_string())
 }
 
 #[tauri::command]
@@ -261,9 +386,10 @@ pub async fn add_recent_file(
     state: tauri::State<'_, crate::state::recent::RecentFilesState>,
     path: String,
 ) -> Result<(), String> {
+    // Validate before adding to prevent poisoned recent list
+    validate_path(&path)?;
     {
         let mut files = state.files.lock().map_err(|e| e.to_string())?;
-
         files.retain(|p| p != &path);
         files.insert(0, path);
 
@@ -271,9 +397,7 @@ pub async fn add_recent_file(
             files.truncate(crate::state::recent::RecentFilesState::MAX_ENTRIES);
         }
     }
-
     state.persist()?;
-
     Ok(())
 }
 
@@ -294,15 +418,69 @@ pub async fn remove_recent_file(
         let mut files = state.files.lock().map_err(|e| e.to_string())?;
         files.retain(|p| p != &path);
     }
-
     state.persist()?;
-
     Ok(())
 }
 
 #[tauri::command]
 pub async fn get_pending_files(
-    state: tauri::State<'_, crate::state::PendingFilesState>,
+    state: tauri::State<'_, crate::PendingFilesState>,
 ) -> Result<Vec<String>, String> {
     Ok(state.drain())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_line_ending_prefers_crlf() {
+        assert_eq!(detect_line_ending("a\r\nb\r\nc"), "CRLF");
+        assert_eq!(detect_line_ending("a\nb\nc"), "LF");
+        assert_eq!(detect_line_ending("a\rb\rc"), "CR");
+        assert_eq!(detect_line_ending("a\r\nb\nc\r\nd"), "CRLF");
+        assert_eq!(detect_line_ending(""), "LF");
+    }
+
+    #[test]
+    fn ensure_extension_appends_only_when_missing() {
+        assert_eq!(ensure_extension("/a/b", "txt"), "/a/b.txt");
+        assert_eq!(ensure_extension("/a/.env", "txt"), "/a/.env");
+        assert_eq!(ensure_extension("/a/notes.md", "txt"), "/a/notes.md");
+        assert_eq!(ensure_extension("/a/.gitignore", "txt"), "/a/.gitignore");
+        assert_eq!(
+            ensure_extension("/a/archive.tar.gz", "txt"),
+            "/a/archive.tar.gz"
+        );
+    }
+
+    #[test]
+    fn normalize_line_endings_crlf() {
+        assert_eq!(normalize_line_endings("a\nb\nc", "\r\n"), "a\r\nb\r\nc");
+        assert_eq!(normalize_line_endings("a\r\nb\nc", "\r\n"), "a\r\nb\r\nc");
+        assert_eq!(normalize_line_endings("a\rb\nc", "\r\n"), "a\r\nb\r\nc");
+    }
+
+    #[test]
+    fn validate_path_rejects_empty_and_relative() {
+        assert!(validate_path("").is_err());
+        assert!(validate_path("relative/path").is_err());
+    }
+
+    #[test]
+    fn validate_path_accepts_existing_file() {
+        let dir = std::env::temp_dir();
+        let f = dir.join("text-rs-test-validate.txt");
+        std::fs::write(&f, b"hello").unwrap();
+        let result = validate_path(&f.to_string_lossy());
+        assert!(result.is_ok());
+        let _ = std::fs::remove_file(&f);
+    }
+
+    #[test]
+    fn is_binary_detects_nul_byte() {
+        assert!(is_binary(b"hello\x00world"));
+        assert!(!is_binary(b"hello world\n"));
+        assert!(!is_binary(b""));
+    }
 }

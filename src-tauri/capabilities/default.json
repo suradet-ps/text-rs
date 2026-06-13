@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window. File I/O is performed exclusively by Rust commands (which are not subject to fs:* capability gates); the renderer has no direct fs plugin permissions.",
   "windows": ["main"],
   "permissions": [
     "core:window:default",
@@ -17,11 +17,6 @@
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
-    "fs:default",
-    "fs:allow-stat",
-    { "identifier": "fs:allow-read-text-file", "allow": [{ "path": "**" }] },
-    { "identifier": "fs:allow-write-text-file", "allow": [{ "path": "**" }] },
-    { "identifier": "fs:scope", "allow": [{ "path": "**" }] },
     "shell:default",
     "shell:allow-open",
     "store:default"

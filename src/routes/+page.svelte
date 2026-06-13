@@ -1,16 +1,23 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import TabBar from '$lib/components/TabBar.svelte';
   import Editor from '$lib/components/Editor.svelte';
   import StatusBar from '$lib/components/StatusBar.svelte';
   import FindReplace from '$lib/components/FindReplace.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-  import { tabsStore } from '$lib/stores/tabs.svelte';
+  import { tabsStore, type Tab } from '$lib/stores/tabs.svelte';
   import { recentStore } from '$lib/stores/recent.svelte';
   import { settingsStore } from '$lib/stores/settings.svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { ipc } from '$lib/tauri/ipc';
+  import { dispatchEditorAction } from '$lib/editor/actions';
+  import { errorMessage } from '$lib/utils/error';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import type { FilePayload } from '$lib/stores/tabs.svelte';
+  import type { FilePayload, RecoveryEntry } from '$lib/types/ipc';
+
+  const SOFT_LIMIT_BYTES = 10 * 1024 * 1024;
+  const RECOVERY_INTERVAL_MS = 15_000;
+  const TOAST_DURATION_MS = 4_000;
+  const SOFT_LIMIT_MB = SOFT_LIMIT_BYTES / (1024 * 1024);
 
   let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
   function getAppWindow() {
@@ -33,15 +40,19 @@
   let confirmShowDiscard = $state(true);
   let confirmShowCancel = $state(true);
   let confirmSaveLabel = $state('Save');
-  let confirmResolve: ((value: string) => void) | null = null;
+  let confirmResolve: ((value: 'save' | 'discard' | 'cancel') => void) | null = null;
 
-  function showConfirmDialog(title: string, message: string, opts?: { saveLabel?: string; showSave?: boolean; showDiscard?: boolean; showCancel?: boolean }): Promise<string> {
+  function showConfirmDialog(
+    title: string,
+    message: string,
+    opts?: { saveLabel?: string; showSave?: boolean; showDiscard?: boolean; showCancel?: boolean }
+  ): Promise<'save' | 'discard' | 'cancel'> {
     return new Promise((resolve) => {
       confirmTitle = title;
       confirmMessage = message;
       confirmShowSave = opts?.showSave ?? true;
       confirmShowDiscard = opts?.showDiscard ?? true;
-      confirmShowCancel = true;
+      confirmShowCancel = opts?.showCancel ?? true;
       confirmSaveLabel = opts?.saveLabel ?? 'Save';
       confirmOpen = true;
       confirmResolve = resolve;
@@ -67,29 +78,31 @@
     toastMessage = message;
     toastVisible = true;
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastVisible = false; }, 4000);
+    toastTimer = setTimeout(() => {
+      toastVisible = false;
+    }, TOAST_DURATION_MS);
   }
 
   async function handleOpenFile() {
     try {
-      const payload = await invoke<FilePayload | null>('open_file');
+      const payload = await ipc.openFile();
       if (payload) {
         tabsStore.openTab(payload);
         await recentStore.add(payload.path);
       }
-    } catch (e: any) {
-      showToast(`Failed to open file: ${e}`);
+    } catch (e: unknown) {
+      showToast(`Failed to open file: ${errorMessage(e)}`);
     }
   }
 
   async function handleOpenRecent(path: string) {
     try {
-      const payload = await invoke<FilePayload>('read_file', { path });
+      const payload = await ipc.readFile(path);
       tabsStore.openTab(payload);
       await recentStore.add(path);
-    } catch (e: any) {
-      const err = String(e);
-      if (err.includes('not found') || err.includes('No such file')) {
+    } catch (e: unknown) {
+      const err = errorMessage(e);
+      if (err.toLowerCase().includes('not found') || err.toLowerCase().includes('no such file')) {
         await recentStore.remove(path);
         showToast(`File not found: ${path}`);
       } else {
@@ -101,19 +114,20 @@
 
   async function handleOpenFromPath(path: string) {
     try {
-      const size = await invoke<number>('check_file_size', { path });
-      if (size > 10 * 1024 * 1024) {
+      const sizeStr = await ipc.checkFileSize(path);
+      const size = Number(sizeStr);
+      if (size > SOFT_LIMIT_BYTES) {
         const result = await showConfirmDialog(
           'Large File',
           `This file is ${(size / (1024 * 1024)).toFixed(1)} MB. Opening large files may be slow. Continue?`,
         );
         if (result !== 'save') return;
       }
-      const payload = await invoke<FilePayload>('read_file_with_encoding', { path });
+      const payload = await ipc.readFile(path);
       tabsStore.openTab(payload);
       await recentStore.add(path);
-    } catch (e: any) {
-      showToast(`Failed to open: ${e}`);
+    } catch (e: unknown) {
+      showToast(`Failed to open: ${errorMessage(e)}`);
     }
   }
 
@@ -127,7 +141,7 @@
     }
 
     try {
-      await invoke('save_file', {
+      await ipc.saveFile({
         path: tab.path,
         content: tab.content,
         lineEnding: tab.lineEnding,
@@ -135,9 +149,9 @@
       });
       tabsStore.markSaved(tab.id, tab.path);
       updateWindowTitle();
-    } catch (e: any) {
-      const err = String(e);
-      if (err.includes('Permission denied') || err.includes('read-only')) {
+    } catch (e: unknown) {
+      const err = errorMessage(e);
+      if (err.toLowerCase().includes('permission denied') || err.toLowerCase().includes('read-only')) {
         const result = await showConfirmDialog(
           'Cannot Save',
           `Cannot save "${tab.fileName}" \u2014 the file is read-only. Save a copy instead?`,
@@ -157,7 +171,7 @@
     if (!tab) return;
 
     try {
-      const newPath = await invoke<string | null>('save_file_as', {
+      const newPath = await ipc.saveFileAs({
         content: tab.content,
         suggestedName: tab.fileName,
         lineEnding: tab.lineEnding,
@@ -168,8 +182,8 @@
         await recentStore.add(newPath);
         updateWindowTitle();
       }
-    } catch (e: any) {
-      showToast(`Failed to save as: ${e}`);
+    } catch (e: unknown) {
+      showToast(`Failed to save as: ${errorMessage(e)}`);
     }
   }
 
@@ -190,12 +204,12 @@
   function updateWindowTitle() {
     const tab = tabsStore.activeTab;
     if (!tab) {
-      invoke('set_window_title', { title: 'text-rs' }).catch(() => {});
+      ipc.setWindowTitle('text-rs').catch(() => {});
       return;
     }
     const dirty = tab.content !== tab.savedContent ? '\u2022 ' : '';
     const title = `${dirty}${tab.fileName} \u2014 text-rs`;
-    invoke('set_window_title', { title }).catch(() => {});
+    ipc.setWindowTitle(title).catch(() => {});
   }
 
   let lastTitleDirty = $state(false);
@@ -203,7 +217,7 @@
   $effect(() => {
     const tab = tabsStore.activeTab;
     if (!tab) {
-      invoke('set_window_title', { title: 'text-rs' }).catch(() => {});
+      ipc.setWindowTitle('text-rs').catch(() => {});
       lastTitleDirty = false;
       return;
     }
@@ -214,7 +228,7 @@
     }
   });
 
-  async function handleTabCloseRequest(e: CustomEvent) {
+  async function handleTabCloseRequest(e: CustomEvent<{ tabId: string }>) {
     const tabId = e.detail.tabId;
     const tab = tabsStore.tabs.find(t => t.id === tabId);
     if (!tab) return;
@@ -232,7 +246,7 @@
     if (result === 'save') {
       if (tab.path) {
         try {
-          await invoke('save_file', {
+          await ipc.saveFile({
             path: tab.path,
             content: tab.content,
             lineEnding: tab.lineEnding,
@@ -240,11 +254,12 @@
           });
           tabsStore.markSaved(tab.id, tab.path);
           tabsStore.forceCloseTab(tabId);
-        } catch (e: any) {
-          showToast(`Failed to save: ${e}`);
+        } catch (e: unknown) {
+          showToast(`Failed to save: ${errorMessage(e)}`);
         }
       } else {
         await handleSaveAs();
+        // Close regardless of save-as result: user explicitly chose Save
         tabsStore.forceCloseTab(tabId);
       }
     } else if (result === 'discard') {
@@ -252,10 +267,15 @@
     }
   }
 
-  async function handleCloseRequest(): Promise<boolean> {
+  /**
+   * Close-window flow. MUST be called only from the Tauri close interceptor.
+   * Always decides whether to close. Returns nothing — side effect is `appWindow.close()`.
+   */
+  async function handleCloseRequest(): Promise<void> {
     const dirtyTabs = tabsStore.getDirtyTabs();
     if (dirtyTabs.length === 0) {
-      return true;
+      getAppWindow().close();
+      return;
     }
 
     const result = await showConfirmDialog(
@@ -264,47 +284,51 @@
       { saveLabel: 'Save All' },
     );
 
+    if (result === 'cancel') return;
+
     if (result === 'save') {
+      const failed: Tab[] = [];
       for (const tab of dirtyTabs) {
-        if (tab.path) {
-          try {
-            await invoke('save_file', {
-              path: tab.path,
-              content: tab.content,
-              lineEnding: tab.lineEnding,
-              encoding: tab.encoding,
-            });
-            tabsStore.markSaved(tab.id, tab.path);
-          } catch (e) {
-            console.error('Failed to save:', e);
-          }
+        if (!tab.path) {
+          failed.push(tab);
+          continue;
+        }
+        try {
+          await ipc.saveFile({
+            path: tab.path,
+            content: tab.content,
+            lineEnding: tab.lineEnding,
+            encoding: tab.encoding,
+          });
+          tabsStore.markSaved(tab.id, tab.path);
+        } catch (e: unknown) {
+          console.error('Failed to save:', e);
+          failed.push(tab);
         }
       }
-      getAppWindow().close();
-      return false;
-    } else if (result === 'discard') {
-      getAppWindow().close();
-      return false;
+      if (failed.length > 0) {
+        showToast(`Could not save ${failed.length} file(s). Close aborted.`);
+        return;
+      }
     }
-    return false;
+    getAppWindow().close();
   }
 
   function handleGoToLine() {
     const line = parseInt(goToLineValue, 10);
     if (isNaN(line) || line < 1) return;
 
-    window.dispatchEvent(new CustomEvent('editor-action', {
-      detail: { action: 'go-to-line', line },
-    }));
+    dispatchEditorAction({ action: 'go-to-line', line });
     showGoToLine = false;
     goToLineValue = '';
   }
 
   $effect(() => {
     if (showGoToLine) {
-      setTimeout(() => {
+      (async () => {
+        await tick();
         document.querySelector<HTMLInputElement>('.goto-line-input')?.focus();
-      }, 50);
+      })();
     }
   });
 
@@ -328,7 +352,7 @@
       const tab = tabsStore.activeTab;
       if (tab) {
         if (tab.content !== tab.savedContent) {
-          handleTabCloseRequest({ detail: { tabId: tab.id } } as CustomEvent);
+          void handleTabCloseRequest(new CustomEvent('tab-close', { detail: { tabId: tab.id } }));
         } else {
           tabsStore.forceCloseTab(tab.id);
         }
@@ -356,23 +380,21 @@
       settingsStore.toggleWordWrap();
     } else if (e.key === 'F3') {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('editor-action', {
-        detail: { action: 'search-next' },
-      }));
+      dispatchEditorAction({ action: 'search-next', query: '', caseSensitive: false, useRegex: false });
     } else if (e.shiftKey && e.key === 'F3') {
       e.preventDefault();
-      window.dispatchEvent(new CustomEvent('editor-action', {
-        detail: { action: 'search-prev' },
-      }));
+      dispatchEditorAction({ action: 'search-prev', query: '', caseSensitive: false, useRegex: false });
     } else if (mod && !e.shiftKey && e.key === 'Tab') {
       e.preventDefault();
       const tabIds = tabsStore.tabs.map(t => t.id);
+      if (tabIds.length === 0) return;
       const currentIdx = tabIds.indexOf(tabsStore.activeTabId ?? '');
       const nextIdx = currentIdx >= tabIds.length - 1 ? 0 : currentIdx + 1;
       tabsStore.setActive(tabIds[nextIdx]);
     } else if (mod && e.shiftKey && e.key === 'Tab') {
       e.preventDefault();
       const tabIds = tabsStore.tabs.map(t => t.id);
+      if (tabIds.length === 0) return;
       const currentIdx = tabIds.indexOf(tabsStore.activeTabId ?? '');
       const prevIdx = currentIdx <= 0 ? tabIds.length - 1 : currentIdx - 1;
       tabsStore.setActive(tabIds[prevIdx]);
@@ -386,61 +408,72 @@
   }
 
   let recoveryInterval: ReturnType<typeof setInterval> | null = null;
+  let lastRecoveryHash = '';
 
   async function saveRecovery() {
+    const tabs = tabsStore.tabs.map(t => ({
+      file_name: t.fileName,
+      content: t.content,
+      path: t.path,
+      saved_at: new Date().toISOString(),
+    }));
+    // Skip the IPC roundtrip if nothing has changed since the last save
+    const hash = JSON.stringify(tabs);
+    if (hash === lastRecoveryHash) return;
+    lastRecoveryHash = hash;
     try {
-      const tabs = tabsStore.tabs.map(t => ({
-        file_name: t.fileName,
-        content: t.content,
-        path: t.path,
-        saved_at: new Date().toISOString(),
-      }));
-      await invoke('save_recovery_data', { tabs });
+      await ipc.saveRecovery(tabs);
     } catch {
-      // Silent - recovery save is best-effort
+      // best-effort
     }
   }
 
   async function checkRecovery() {
     try {
-      const entries = await invoke<Array<{ file_name: string; content: string; path: string | null }> | null>('check_recovery_data');
-      if (entries && entries.length > 0) {
-        const names = entries.map(e => e.file_name).join(', ');
-        const result = await showConfirmDialog(
-          'Session Recovery',
-          `Found unsaved files from previous session: ${names}. Restore them?`,
-          { showDiscard: true, showCancel: true, saveLabel: 'Restore' },
-        );
-        if (result === 'save') {
-          for (const entry of entries) {
+      const entries = await ipc.checkRecovery();
+      if (!entries || entries.length === 0) return;
+
+      const names = entries.map(e => e.file_name).join(', ');
+      const result = await showConfirmDialog(
+        'Session Recovery',
+        `Found unsaved files from previous session: ${names}. Restore them?`,
+        { showDiscard: true, showCancel: true, saveLabel: 'Restore' },
+      );
+
+      if (result === 'save') {
+        for (const entry of entries) {
+          try {
             tabsStore.openTab({
               path: entry.path ?? '',
               content: entry.content,
               file_name: entry.file_name,
+              encoding: 'UTF-8',
+              line_ending: 'LF',
             });
+          } catch (e: unknown) {
+            showToast(`Could not restore ${entry.file_name}: ${errorMessage(e)}`);
           }
         }
-        await invoke('clear_recovery_data');
+        await ipc.clearRecovery();
+      } else if (result === 'discard') {
+        await ipc.clearRecovery();
       }
+      // 'cancel' → leave recovery data in place for next launch
     } catch {
-      // Silent - recovery check is best-effort
+      // best-effort
     }
   }
 
   onMount(() => {
-    // Window close interception MUST be registered first, before any async work.
-    // In production builds, the close event can fire before init() completes.
+    // Single source of truth: Tauri onCloseRequested interceptor.
     const closeUnlistenPromise = getAppWindow().onCloseRequested((event) => {
-      const dirtyTabs = tabsStore.getDirtyTabs();
-      if (dirtyTabs.length > 0) {
-        event.preventDefault();
-        handleCloseRequest();
-      }
+      event.preventDefault();
+      void handleCloseRequest();
     });
 
     const init = async () => {
-      await settingsStore.init();
-      await recentStore.refresh();
+      // Run independent inits in parallel
+      await Promise.all([settingsStore.init(), recentStore.refresh()]);
 
       if (tabsStore.tabs.length === 0) {
         tabsStore.newTab();
@@ -448,53 +481,53 @@
 
       // Open files passed via OS (right-click → Open with, drag onto icon, etc.)
       try {
-        const pending = await invoke<string[]>('get_pending_files');
+        const pending = await ipc.getPending();
         for (const filePath of pending) {
           await handleOpenFromPath(filePath);
         }
       } catch {
-        // Silent - no pending files
+        // no pending files
       }
 
       await checkRecovery();
-
       updateWindowTitle();
     };
-    init();
+    void init();
 
-    // Start recovery auto-save interval with immediate first save
-    saveRecovery();
-    recoveryInterval = setInterval(() => saveRecovery(), 15000);
+    // Start recovery auto-save
+    void saveRecovery();
+    recoveryInterval = setInterval(() => void saveRecovery(), RECOVERY_INTERVAL_MS);
 
     window.addEventListener('keydown', handleGlobalKeydown);
-    window.addEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
-    const windowCloseHandler: EventListener = () => { handleCloseRequest(); };
-    window.addEventListener('window-close-request', windowCloseHandler);
 
-    // All menu event handlers (stored for cleanup)
+    const tabCloseHandler: EventListener = (e) => {
+      void handleTabCloseRequest(e as CustomEvent<{ tabId: string }>);
+    };
+    window.addEventListener('tab-close-request', tabCloseHandler);
+
     const menuHandlers: Array<{ event: string; handler: EventListener }> = [
       { event: 'menu-new-tab', handler: () => tabsStore.newTab() },
-      { event: 'menu-open-file', handler: () => { handleOpenFile(); } },
-      { event: 'menu-save', handler: () => { handleSave(); } },
-      { event: 'menu-save-as', handler: () => { handleSaveAs(); } },
+      { event: 'menu-open-file', handler: () => void handleOpenFile() },
+      { event: 'menu-save', handler: () => void handleSave() },
+      { event: 'menu-save-as', handler: () => void handleSaveAs() },
       {
-        event: 'menu-close-tab', handler: () => {
+        event: 'menu-close-tab',
+        handler: () => {
           const tab = tabsStore.activeTab;
-          if (tab) {
-            if (tab.content !== tab.savedContent) {
-              handleTabCloseRequest({ detail: { tabId: tab.id } } as CustomEvent);
-            } else {
-              tabsStore.forceCloseTab(tab.id);
-            }
+          if (!tab) return;
+          if (tab.content !== tab.savedContent) {
+            void handleTabCloseRequest(new CustomEvent('tab-close', { detail: { tabId: tab.id } }));
+          } else {
+            tabsStore.forceCloseTab(tab.id);
           }
-        }
+        },
       },
-      { event: 'menu-undo', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'undo' } })) },
-      { event: 'menu-redo', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'redo' } })) },
-      { event: 'menu-cut', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'cut' } })) },
-      { event: 'menu-copy', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'copy' } })) },
-      { event: 'menu-paste', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'paste' } })) },
-      { event: 'menu-select-all', handler: () => window.dispatchEvent(new CustomEvent('editor-action', { detail: { action: 'select-all' } })) },
+      { event: 'menu-undo', handler: () => dispatchEditorAction({ action: 'undo' }) },
+      { event: 'menu-redo', handler: () => dispatchEditorAction({ action: 'redo' }) },
+      { event: 'menu-cut', handler: () => dispatchEditorAction({ action: 'cut' }) },
+      { event: 'menu-copy', handler: () => dispatchEditorAction({ action: 'copy' }) },
+      { event: 'menu-paste', handler: () => dispatchEditorAction({ action: 'paste' }) },
+      { event: 'menu-select-all', handler: () => dispatchEditorAction({ action: 'select-all' }) },
       { event: 'menu-find', handler: () => { showFindReplace = true; } },
       { event: 'menu-find-replace', handler: () => { showFindReplace = true; } },
       { event: 'menu-go-to-line', handler: () => { showGoToLine = true; } },
@@ -507,28 +540,26 @@
 
     const menuOpenRecentHandler: EventListener = (e) => {
       const path = (e as CustomEvent<string>).detail;
-      handleOpenRecent(path);
+      void handleOpenRecent(path);
     };
     const menuAboutHandler: EventListener = () => {
-      showConfirmDialog(
+      void showConfirmDialog(
         'About text-rs',
         'text-rs v0.2.0\nA fast, lightweight text editor.\nBuilt with Tauri, Svelte 5, and CodeMirror 6.',
         { showDiscard: false, showCancel: false, saveLabel: 'OK' },
-      ).then(() => {});
+      );
     };
 
     menuHandlers.forEach(({ event, handler }) => window.addEventListener(event, handler));
     window.addEventListener('menu-open-recent', menuOpenRecentHandler);
     window.addEventListener('menu-about', menuAboutHandler);
 
-    // File opened from OS (double-click or argv)
+    // OS file-open events and drag-drop
     const unlistenFileOpened = getAppWindow().listen<string[]>('file-opened', async (event) => {
       for (const filePath of event.payload) {
         await handleOpenFromPath(filePath);
       }
     });
-
-    // File drop on window
     const unlistenDragDrop = getAppWindow().onDragDropEvent(async (event) => {
       if (event.payload.type === 'drop') {
         for (const filePath of event.payload.paths) {
@@ -538,16 +569,16 @@
     });
 
     return () => {
+      if (toastTimer) clearTimeout(toastTimer);
       if (recoveryInterval) clearInterval(recoveryInterval);
       window.removeEventListener('keydown', handleGlobalKeydown);
-      window.removeEventListener('tab-close-request', handleTabCloseRequest as unknown as EventListener);
-      window.removeEventListener('window-close-request', windowCloseHandler);
+      window.removeEventListener('tab-close-request', tabCloseHandler);
       menuHandlers.forEach(({ event, handler }) => window.removeEventListener(event, handler));
       window.removeEventListener('menu-open-recent', menuOpenRecentHandler);
       window.removeEventListener('menu-about', menuAboutHandler);
-      unlistenFileOpened.then(fn => fn());
-      unlistenDragDrop.then(fn => fn());
-      closeUnlistenPromise.then(fn => fn());
+      unlistenFileOpened.then((fn) => fn());
+      unlistenDragDrop.then((fn) => fn());
+      closeUnlistenPromise.then((fn) => fn());
     };
   });
 </script>
